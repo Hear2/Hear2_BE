@@ -1,4 +1,4 @@
-package com.heaer2;
+package com.hear2;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

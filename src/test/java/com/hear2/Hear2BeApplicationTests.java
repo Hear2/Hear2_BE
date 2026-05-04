@@ -1,4 +1,4 @@
-package com.heaer2;
+package com.hear2;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
