@@ -13,5 +13,24 @@ spring:
       ddl-auto: update
     show-sql: true
 
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+app:
+  file-storage:
+    type: ${CHAT_STORAGE_TYPE:local}
+    upload-dir: ${CHAT_UPLOAD_DIR:uploads}
+
+cloudflare:
+  r2:
+    access-key: ${R2_ACCESS_KEY:}
+    secret-key: ${R2_SECRET_KEY:}
+    endpoint: ${R2_ENDPOINT:}
+    bucket: ${R2_BUCKET:hear2-storage}
+    public-url: ${R2_PUBLIC_URL:}
+    region: ${R2_REGION:auto}
+
 server:
   port: 8080

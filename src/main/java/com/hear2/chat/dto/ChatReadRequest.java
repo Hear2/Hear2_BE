@@ -1,0 +1,12 @@
+package com.hear2.chat.dto;
+
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Getter
+@NoArgsConstructor
+public class ChatReadRequest {
+
+    private Long coupleId;
+    private Long readerId;
+}

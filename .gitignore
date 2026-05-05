@@ -31,6 +31,8 @@ build/
 *.ipr
 out/
 
+uploads/
+
 # STS
 .apt_generated
 .classpath
