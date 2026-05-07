@@ -57,3 +57,13 @@ bin/
 .env
 application-secret.yml
 src/main/resources/application-secret.yml
+
+# macOS
+.DS_Store
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+hear2-ai/venv/

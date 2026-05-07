@@ -22,6 +22,17 @@ app:
   file-storage:
     type: ${CHAT_STORAGE_TYPE:local}
     upload-dir: ${CHAT_UPLOAD_DIR:uploads}
+  emotion:
+    analysis:
+      enabled: ${EMOTION_ANALYSIS_ENABLED:true}
+      base-url: ${EMOTION_ANALYSIS_BASE_URL:http://localhost:8000}
+      analyze-path: ${EMOTION_ANALYSIS_PATH:/analyze}
+      connect-timeout-ms: ${EMOTION_ANALYSIS_CONNECT_TIMEOUT_MS:1500}
+      read-timeout-ms: ${EMOTION_ANALYSIS_READ_TIMEOUT_MS:5000}
+  fcm:
+    enabled: ${FCM_ENABLED:false}
+    credentials-path: ${FCM_CREDENTIALS_PATH:}
+    project-id: ${FCM_PROJECT_ID:}
 
 cloudflare:
   r2:
