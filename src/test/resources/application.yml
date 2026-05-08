@@ -14,3 +14,15 @@ app:
   file-storage:
     type: local
     upload-dir: ${java.io.tmpdir}/hear2-test-uploads
+  memory-storage:
+    type: local
+    upload-dir: ${java.io.tmpdir}/hear2-test-memory-uploads
+
+openai:
+  api-key:
+  model: gpt-4o-mini
+
+kakao:
+  rest-api-key:
+  local:
+    radius-meters: 1000

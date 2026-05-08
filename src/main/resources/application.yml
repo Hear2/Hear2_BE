@@ -22,6 +22,9 @@ app:
   file-storage:
     type: ${CHAT_STORAGE_TYPE:local}
     upload-dir: ${CHAT_UPLOAD_DIR:uploads}
+  memory-storage:
+    type: ${MEMORY_STORAGE_TYPE:local}
+    upload-dir: ${MEMORY_UPLOAD_DIR:memory-uploads}
 
 cloudflare:
   r2:
@@ -31,6 +34,15 @@ cloudflare:
     bucket: ${R2_BUCKET:hear2-storage}
     public-url: ${R2_PUBLIC_URL:}
     region: ${R2_REGION:auto}
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_MODEL:gpt-4o-mini}
+
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY:}
+  local:
+    radius-meters: ${KAKAO_LOCAL_RADIUS_METERS:1000}
 
 server:
   port: 8080
