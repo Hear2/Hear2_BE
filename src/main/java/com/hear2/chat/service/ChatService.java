@@ -7,6 +7,8 @@ import com.hear2.chat.dto.ChatReadResponse;
 import com.hear2.chat.entity.ChatMessage;
 import com.hear2.chat.entity.MessageType;
 import com.hear2.chat.repository.ChatMessageRepository;
+import com.hear2.emotion.dto.EmotionAnalysisResponse;
+import com.hear2.emotion.service.EmotionAnalysisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,12 +18,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class ChatService {
 
     private final ChatMessageRepository chatMessageRepository;
+    private final EmotionAnalysisService emotionAnalysisService;
 
     @Transactional
     public ChatMessageResponse saveMessage(ChatMessageRequest request) {
@@ -44,14 +48,23 @@ public class ChatService {
 
         ChatMessage savedMessage = chatMessageRepository.save(message);
 
-        return ChatMessageResponse.from(savedMessage);
+        EmotionAnalysisResponse emotion = messageType == MessageType.TEXT
+                ? emotionAnalysisService.analyzeAndSave(savedMessage)
+                : null;
+
+        return ChatMessageResponse.from(savedMessage, emotion);
     }
 
     @Transactional(readOnly = true)
     public List<ChatMessageResponse> getMessages(Long coupleId) {
-        return chatMessageRepository.findByCoupleIdOrderByCreatedAtAsc(coupleId)
-                .stream()
-                .map(ChatMessageResponse::from)
+        List<ChatMessage> messages = chatMessageRepository.findByCoupleIdOrderByCreatedAtAsc(coupleId);
+        List<Long> messageIds = messages.stream()
+                .map(ChatMessage::getId)
+                .toList();
+        Map<Long, EmotionAnalysisResponse> emotionsByMessageId = emotionAnalysisService.findByMessageIds(messageIds);
+
+        return messages.stream()
+                .map(message -> ChatMessageResponse.from(message, emotionsByMessageId.get(message.getId())))
                 .toList();
     }
 
@@ -112,7 +125,6 @@ public class ChatService {
         if (messageType == null) {
             return MessageType.TEXT;
         }
-
         return messageType;
     }
 
@@ -145,7 +157,6 @@ public class ChatService {
         if (messageType == MessageType.TEXT) {
             return content.trim();
         }
-
         return content == null ? "" : content;
     }
 
