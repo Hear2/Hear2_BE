@@ -17,6 +17,17 @@ app:
   memory-storage:
     type: local
     upload-dir: ${java.io.tmpdir}/hear2-test-memory-uploads
+  emotion:
+    analysis:
+      enabled: false
+      base-url: http://localhost:8000
+      analyze-path: /analyze
+      connect-timeout-ms: 1500
+      read-timeout-ms: 5000
+  fcm:
+    enabled: false
+    credentials-path:
+    project-id:
 
 openai:
   api-key:
