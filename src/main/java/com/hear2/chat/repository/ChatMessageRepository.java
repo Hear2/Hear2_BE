@@ -10,4 +10,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     List<ChatMessage> findByCoupleIdOrderByCreatedAtAsc(Long coupleId);
 
     List<ChatMessage> findByCoupleIdAndReceiverIdAndReadAtIsNullOrderByCreatedAtAsc(Long coupleId, Long receiverId);
+
+    List<ChatMessage> findTop20ByCoupleIdOrderByCreatedAtDesc(
+            Long coupleId
+    );
 }

@@ -26,7 +26,7 @@ public class EmotionController {
 
     @Operation(
             summary = "메시지 감정 분석",
-            description = "메시지 내용을 FastAPI 감정 분석 서버로 전달하고, 감정 유형/점수/이모지와 리스크 판정 결과를 반환합니다."
+            description = "메시지 내용을 FastAPI 감정 분석 서버로 전달하고, GPT-4o 기반 감정 유형/점수/이모지와 리스크 판정 결과를 반환합니다."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "감정 분석 성공",

@@ -22,11 +22,17 @@ app:
   file-storage:
     type: ${CHAT_STORAGE_TYPE:local}
     upload-dir: ${CHAT_UPLOAD_DIR:uploads}
+  memory-storage:
+    type: ${MEMORY_STORAGE_TYPE:local}
+    upload-dir: ${MEMORY_UPLOAD_DIR:memory-uploads}
+  location-sharing:
+    name-refresh-distance-meters: ${LOCATION_NAME_REFRESH_DISTANCE_METERS:50}
   emotion:
     analysis:
       enabled: ${EMOTION_ANALYSIS_ENABLED:true}
-      base-url: ${EMOTION_ANALYSIS_BASE_URL:http://localhost:8000}
+      base-url: ${EMOTION_ANALYSIS_BASE_URL:http://127.0.0.1:8000}
       analyze-path: ${EMOTION_ANALYSIS_PATH:/analyze}
+      judge-path: ${JUDGE_ANALYSIS_PATH:/judge}
       connect-timeout-ms: ${EMOTION_ANALYSIS_CONNECT_TIMEOUT_MS:1500}
       read-timeout-ms: ${EMOTION_ANALYSIS_READ_TIMEOUT_MS:5000}
   fcm:
@@ -47,6 +53,15 @@ cloudflare:
     bucket: ${R2_BUCKET:hear2-storage}
     public-url: ${R2_PUBLIC_URL:}
     region: ${R2_REGION:auto}
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_MODEL:gpt-4o-mini}
+
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY:}
+  local:
+    radius-meters: ${KAKAO_LOCAL_RADIUS_METERS:1000}
 
 server:
   port: 8080
