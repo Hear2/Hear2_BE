@@ -16,7 +16,13 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "couple_member")
+@Table(
+        name = "couple_member",
+        indexes = {
+                @jakarta.persistence.Index(name = "idx_couple_member_user", columnList = "user_id"),
+                @jakarta.persistence.Index(name = "idx_couple_member_couple", columnList = "couple_id")
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
@@ -28,16 +34,16 @@ public class CoupleMember {
     @Column(name = "couple_member_id")
     private Long coupleMemberId;
 
-    @Column(name = "couple_id")
+    @Column(name = "couple_id", nullable = false)
     private Long coupleId;
 
-    @Column(name = "user_id")
+    @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(name = "role")
+    @Column(name = "role", length = 32)
     private String role;
 
-    @Column(name = "joined_at")
+    @Column(name = "joined_at", nullable = false)
     private LocalDateTime joinedAt;
 
     @PrePersist

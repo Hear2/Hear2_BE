@@ -3,6 +3,7 @@ package com.hear2.judge.service;
 import com.hear2.chat.entity.ChatMessage;
 import com.hear2.chat.entity.MessageType;
 import com.hear2.chat.repository.ChatMessageRepository;
+import com.hear2.chat.service.ChatParticipantResolver;
 import com.hear2.emotion.entity.EmotionAnalysis;
 import com.hear2.emotion.enums.RiskLevel;
 import com.hear2.emotion.repository.EmotionAnalysisRepository;
@@ -40,15 +41,17 @@ public class JudgeService {
     private final EmotionAnalysisRepository emotionAnalysisRepository;
     private final JudgeHistoryRepository judgeHistoryRepository;
     private final JudgeAnalysisClient judgeAnalysisClient;
+    private final ChatParticipantResolver chatParticipantResolver;
 
     @Transactional
-    public JudgeResponse judge(JudgeRequest request) {
+    public JudgeResponse judge(Long currentUserId, JudgeRequest request) {
         validateJudgeRequest(request);
+        ChatParticipantResolver.ChatRoomContext context = resolveAuthorizedContext(currentUserId, request.getCoupleId());
 
         ChatMessage triggerMessage = chatMessageRepository.findById(request.getTriggerMessageId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "trigger message not found"));
-        if (!request.getCoupleId().equals(triggerMessage.getCoupleId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "trigger message does not belong to couple");
+        if (!context.coupleId().equals(triggerMessage.getCoupleId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "trigger message does not belong to your couple");
         }
 
         EmotionAnalysis triggerEmotion = findTriggerEmotionAnalysis(triggerMessage.getId());
@@ -58,7 +61,7 @@ public class JudgeService {
                     "AI judge is available only for high negative score or WARNING/DANGER risk messages");
         }
 
-        List<ChatMessage> recentMessages = findRecentTextMessages(request.getCoupleId());
+        List<ChatMessage> recentMessages = findRecentTextMessages(context.coupleId());
         if (recentMessages.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "no text messages to judge");
         }
@@ -69,9 +72,9 @@ public class JudgeService {
                 .toList();
 
         JudgeFastApiRequest fastApiRequest = JudgeFastApiRequest.builder()
-                .coupleId(request.getCoupleId())
+                .coupleId(context.coupleId())
                 .triggerMessageId(request.getTriggerMessageId())
-                .requestedByUserId(request.getRequestedByUserId())
+                .requestedByUserId(context.senderId())
                 .messages(fastApiMessages)
                 .build();
 
@@ -81,7 +84,7 @@ public class JudgeService {
 
         JudgeHistory savedHistory = judgeHistoryRepository.save(
                 JudgeHistory.builder()
-                        .coupleId(request.getCoupleId())
+                        .coupleId(context.coupleId())
                         .triggerMessageId(request.getTriggerMessageId())
                         .triggerRiskLevel(triggerRiskLevel)
                         .summaryA(response.getSummaryA())
@@ -94,7 +97,7 @@ public class JudgeService {
                         .build()
         );
         Long sameConflictCount = judgeHistoryRepository.countByCoupleIdAndConflictType(
-                request.getCoupleId(),
+                context.coupleId(),
                 conflictType
         );
 
@@ -102,19 +105,37 @@ public class JudgeService {
     }
 
     @Transactional(readOnly = true)
-    public List<JudgeHistoryResponse> getHistories(Long coupleId) {
-        validateCoupleId(coupleId);
+    public List<JudgeHistoryResponse> getHistories(Long currentUserId) {
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
+        return findHistories(context.coupleId());
+    }
 
+    @Transactional(readOnly = true)
+    public List<JudgeHistoryResponse> getHistories(Long currentUserId, Long coupleId) {
+        ChatParticipantResolver.ChatRoomContext context = resolveAuthorizedContext(currentUserId, coupleId);
+        return findHistories(context.coupleId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConflictPatternResponse> getPatterns(Long currentUserId) {
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
+        return findPatterns(context.coupleId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConflictPatternResponse> getPatterns(Long currentUserId, Long coupleId) {
+        ChatParticipantResolver.ChatRoomContext context = resolveAuthorizedContext(currentUserId, coupleId);
+        return findPatterns(context.coupleId());
+    }
+
+    private List<JudgeHistoryResponse> findHistories(Long coupleId) {
         return judgeHistoryRepository.findByCoupleIdOrderByCreatedAtDesc(coupleId)
                 .stream()
                 .map(JudgeHistoryResponse::from)
                 .toList();
     }
 
-    @Transactional(readOnly = true)
-    public List<ConflictPatternResponse> getPatterns(Long coupleId) {
-        validateCoupleId(coupleId);
-
+    private List<ConflictPatternResponse> findPatterns(Long coupleId) {
         Map<ConflictType, List<JudgeHistory>> historiesByType = judgeHistoryRepository
                 .findByCoupleIdOrderByCreatedAtDesc(coupleId)
                 .stream()
@@ -142,16 +163,17 @@ public class JudgeService {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "judge request is required");
         }
-        validateCoupleId(request.getCoupleId());
         if (request.getTriggerMessageId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "triggerMessageId is required");
         }
     }
 
-    private void validateCoupleId(Long coupleId) {
-        if (coupleId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coupleId is required");
+    private ChatParticipantResolver.ChatRoomContext resolveAuthorizedContext(Long currentUserId, Long requestedCoupleId) {
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
+        if (requestedCoupleId != null && !context.coupleId().equals(requestedCoupleId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "couple access denied");
         }
+        return context;
     }
 
     private EmotionAnalysis findTriggerEmotionAnalysis(Long triggerMessageId) {

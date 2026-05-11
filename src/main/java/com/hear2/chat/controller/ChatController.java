@@ -9,14 +9,18 @@ import com.hear2.global.error.ApiErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -31,7 +35,7 @@ public class ChatController {
 
     @Operation(
             summary = "채팅 메시지 전송",
-            description = "TEXT 메시지는 저장 직후 GPT-4o 기반 감정 분석을 수행하고, 감정 이모지/점수/리스크 정보와 AI 판사 호출 가능 여부를 응답에 포함합니다. 주의/경고/위험 리스크가 감지되면 상대방에게 FCM 알림 발송을 시도합니다."
+            description = "로그인된 사용자의 커플 정보를 기준으로 메시지를 저장합니다. TEXT 메시지는 저장 직후 GPT-4o 기반 감정 분석을 수행하고, 감정 이모지/점수/리스크 정보와 AI 판사 호출 가능 여부를 응답에 포함합니다. 주의/경고/위험 리스크가 감지되면 상대방에게 FCM 알림 발송을 시도합니다."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "메시지 전송 성공",
@@ -39,9 +43,43 @@ public class ChatController {
             @ApiResponse(responseCode = "400", description = "요청 값 오류",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            description = "로그인된 사용자의 커플 정보가 자동 적용됩니다. TEXT 메시지는 content/messageType만 보내면 됩니다.",
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(implementation = ChatMessageRequest.class),
+                    examples = {
+                            @ExampleObject(
+                                    name = "TEXT 메시지",
+                                    summary = "텍스트 전송",
+                                    value = """
+                                            {
+                                              "content": "로그인 테스트",
+                                              "messageType": "TEXT"
+                                            }
+                                            """
+                            ),
+                            @ExampleObject(
+                                    name = "IMAGE 메시지",
+                                    summary = "업로드한 이미지 전송",
+                                    value = """
+                                            {
+                                              "content": "",
+                                              "messageType": "IMAGE",
+                                              "mediaUrl": "/uploads/chat/sample.png",
+                                              "originalFileName": "sample.png",
+                                              "mediaContentType": "image/png",
+                                              "mediaSize": 204800
+                                            }
+                                            """
+                            )
+                    }
+            )
+    )
     @PostMapping("/messages")
-    public ChatMessageResponse sendMessage(@RequestBody ChatMessageRequest request) {
-        return chatService.saveMessage(request);
+    public ChatMessageResponse sendMessage(Authentication authentication, @RequestBody ChatMessageRequest request) {
+        return chatService.saveMessage(currentUserId(authentication), request);
     }
 
     @Operation(summary = "채팅 미디어 업로드", description = "이미지 또는 동영상 파일을 업로드하고 채팅 메시지에서 사용할 미디어 정보를 반환합니다.")
@@ -59,13 +97,29 @@ public class ChatController {
         return chatMediaStorageService.store(file);
     }
 
-    @Operation(summary = "커플 채팅 메시지 목록 조회", description = "커플 ID 기준으로 채팅 메시지를 오래된 순서로 조회하며, 저장된 감정 분석 결과를 함께 반환합니다.")
+    @Operation(summary = "내 채팅 메시지 목록 조회", description = "로그인된 사용자의 커플 기준으로 채팅 메시지를 오래된 순서로 조회하며, 저장된 감정 분석 결과를 함께 반환합니다.")
+    @ApiResponse(responseCode = "200", description = "메시지 목록 조회 성공")
+    @GetMapping("/messages")
+    public List<ChatMessageResponse> getMessages(Authentication authentication) {
+        return chatService.getMessages(currentUserId(authentication));
+    }
+
+    @Deprecated
+    @Operation(summary = "커플 채팅 메시지 목록 조회(호환용)", description = "기존 경로 호환을 위해 남겨둔 API입니다. 실제 조회는 로그인된 사용자의 커플 기준으로 수행됩니다.")
     @ApiResponse(responseCode = "200", description = "메시지 목록 조회 성공")
     @GetMapping("/couples/{coupleId}/messages")
-    public List<ChatMessageResponse> getMessages(
-            @Parameter(description = "커플 ID", example = "1", required = true)
+    public List<ChatMessageResponse> getMessagesLegacy(
+            Authentication authentication,
+            @Parameter(description = "기존 호출 호환용 커플 ID", example = "1", required = true)
             @PathVariable Long coupleId
     ) {
-        return chatService.getMessages(coupleId);
+        return chatService.getMessages(currentUserId(authentication));
+    }
+
+    private Long currentUserId(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "login is required");
+        }
+        return (Long) authentication.getPrincipal();
     }
 }
