@@ -14,7 +14,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Hear2 API")
-                        .description("Hear2 채팅, 감정 분석, 리스크 알림 API 문서")
+                        .description("Hear2 채팅, 감정 분석, 리스크 알림, AI 판사 API 문서")
                         .version("v1")
                         .license(new License()
                                 .name("MIT")

@@ -12,8 +12,9 @@ import org.springframework.stereotype.Component;
 public class EmotionAnalysisProperties {
 
     private boolean enabled = true;
-    private String baseUrl = "http://localhost:8000";
+    private String baseUrl = "http://127.0.0.1:8000";
     private String analyzePath = "/analyze";
+    private String judgePath = "/judge";
     private int connectTimeoutMs = 1500;
     private int readTimeoutMs = 5000;
 }

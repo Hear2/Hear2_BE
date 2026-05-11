@@ -5,6 +5,7 @@ import com.hear2.chat.entity.MessageType;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
 import com.hear2.emotion.enums.EmotionType;
 import com.hear2.emotion.enums.RiskLevel;
+import com.hear2.judge.support.JudgeTriggerPolicy;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
@@ -80,6 +81,12 @@ public class ChatMessageResponse {
     @Schema(description = "감지된 위험 키워드 목록", example = "[\"가만 안 둬\"]")
     private List<String> detectedRiskKeywords;
 
+    @Schema(description = "AI 판사 호출 버튼 노출 여부. WARNING/DANGER 리스크이거나 부정 감정 점수가 높을 때 true입니다.", example = "true")
+    private Boolean judgeAvailable;
+
+    @Schema(description = "AI 판사 호출 시 triggerMessageId로 전달할 메시지 ID", example = "100")
+    private Long judgeTriggerMessageId;
+
     public static ChatMessageResponse from(ChatMessage message) {
         return ChatMessageResponse.builder()
                 .id(message.getId())
@@ -95,6 +102,7 @@ public class ChatMessageResponse {
                 .readAt(message.getReadAt())
                 .unreadCount(message.getReadAt() == null ? 1 : 0)
                 .createdAt(message.getCreatedAt())
+                .judgeAvailable(false)
                 .build();
     }
 
@@ -131,6 +139,12 @@ public class ChatMessageResponse {
                 .riskDetected(emotion.getRiskDetected())
                 .riskReason(emotion.getRiskReason())
                 .detectedRiskKeywords(emotion.getDetectedRiskKeywords())
+                .judgeAvailable(isJudgeAvailable(emotion))
+                .judgeTriggerMessageId(isJudgeAvailable(emotion) ? message.getId() : null)
                 .build();
+    }
+
+    private static boolean isJudgeAvailable(EmotionAnalysisResponse emotion) {
+        return JudgeTriggerPolicy.isJudgeAvailable(emotion.getRiskLevel(), emotion.getNegativeScore());
     }
 }

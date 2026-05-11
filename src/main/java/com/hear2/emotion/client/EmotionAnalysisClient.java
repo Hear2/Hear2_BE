@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -52,6 +53,11 @@ public class EmotionAnalysisClient {
             }
 
             return normalize(response);
+        } catch (HttpStatusCodeException ex) {
+            log.warn("FastAPI emotion analysis returned error. messageId={}, status={}, body={}",
+                    request.getMessageId(), ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "FastAPI emotion analysis returned error: " + ex.getResponseBodyAsString(), ex);
         } catch (RestClientException ex) {
             log.warn("FastAPI emotion analysis request failed. messageId={}", request.getMessageId(), ex);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "FastAPI emotion analysis request failed", ex);

@@ -25,8 +25,9 @@ app:
   emotion:
     analysis:
       enabled: ${EMOTION_ANALYSIS_ENABLED:true}
-      base-url: ${EMOTION_ANALYSIS_BASE_URL:http://localhost:8000}
+      base-url: ${EMOTION_ANALYSIS_BASE_URL:http://127.0.0.1:8000}
       analyze-path: ${EMOTION_ANALYSIS_PATH:/analyze}
+      judge-path: ${JUDGE_ANALYSIS_PATH:/judge}
       connect-timeout-ms: ${EMOTION_ANALYSIS_CONNECT_TIMEOUT_MS:1500}
       read-timeout-ms: ${EMOTION_ANALYSIS_READ_TIMEOUT_MS:5000}
   fcm:
