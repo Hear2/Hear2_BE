@@ -5,6 +5,7 @@
 ```http
 POST /api/v1/memories
 Content-Type: multipart/form-data
+Authorization: Bearer {accessToken}
 ```
 
 Form data:
@@ -19,7 +20,6 @@ Form data:
 ```json
 {
   "coupleId": 1,
-  "uploaderId": 1,
   "memo": "직접 테스트",
   "takenAt": "2026-05-09T04:10:00",
   "latitude": 37.5445,
@@ -29,6 +29,8 @@ Form data:
 
 Notes:
 
+- `uploaderId` is resolved from the JWT access token. Clients must not send or trust uploader IDs in the request body.
+- The authenticated user must be a member of the requested `coupleId`.
 - `locationName` is optional. If it is omitted and coordinates are available, the server resolves `placeName` and `addressName` with Kakao Local API.
 - If `takenAt`, `latitude`, or `longitude` are omitted, the server tries to read them from photo EXIF metadata.
 - The server extracts only needed EXIF values before storage, then stores a sanitized image without EXIF metadata.
@@ -71,14 +73,16 @@ Response example:
 
 ```http
 GET /api/v1/memories/couples/{coupleId}
+Authorization: Bearer {accessToken}
 ```
 
-Returns all memories for a couple, ordered by memory date and creation time descending.
+Returns all memories for a couple, ordered by memory date and creation time descending. The authenticated user must be a member of the couple.
 
 ## Get Memories By Date
 
 ```http
 GET /api/v1/memories/couples/{coupleId}/dates/{memoryDate}
+Authorization: Bearer {accessToken}
 ```
 
 `memoryDate` format:
@@ -91,12 +95,14 @@ yyyy-MM-dd
 
 ```http
 GET /api/v1/memories/couples/{coupleId}/items/{memoryId}
+Authorization: Bearer {accessToken}
 ```
 
 ## Get Memory Photo
 
 ```http
 GET /api/v1/memories/couples/{coupleId}/items/{memoryId}/photo
+Authorization: Bearer {accessToken}
 ```
 
 Use this URL in the app image component. The API returns image bytes and does not expose the raw R2 object URL.
@@ -106,6 +112,7 @@ Use this URL in the app image component. The API returns image bytes and does no
 ```http
 PATCH /api/v1/memories/couples/{coupleId}/items/{memoryId}
 Content-Type: application/json
+Authorization: Bearer {accessToken}
 ```
 
 ```json
@@ -118,6 +125,7 @@ Content-Type: application/json
 
 ```http
 DELETE /api/v1/memories/couples/{coupleId}/items/{memoryId}
+Authorization: Bearer {accessToken}
 ```
 
 Deletes the database record and the stored image object.
