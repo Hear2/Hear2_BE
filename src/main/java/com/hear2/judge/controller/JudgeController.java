@@ -14,8 +14,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -41,28 +44,58 @@ public class JudgeController {
     })
     @PostMapping
     public ResponseEntity<JudgeResponse> judge(
+            Authentication authentication,
             @RequestBody JudgeRequest request
     ) {
-        return ResponseEntity.ok(judgeService.judge(request));
+        return ResponseEntity.ok(judgeService.judge(currentUserId(authentication), request));
     }
 
-    @Operation(summary = "AI 판사 판결 이력 조회", description = "커플 ID 기준으로 저장된 AI 판결 이력을 최신순으로 조회합니다.")
+    @Operation(summary = "내 AI 판사 판결 이력 조회", description = "로그인된 사용자의 커플 기준으로 저장된 AI 판결 이력을 최신순으로 조회합니다.")
+    @ApiResponse(responseCode = "200", description = "판결 이력 조회 성공")
+    @GetMapping("/histories")
+    public List<JudgeHistoryResponse> getHistories(
+            Authentication authentication
+    ) {
+        return judgeService.getHistories(currentUserId(authentication));
+    }
+
+    @Operation(summary = "내 반복 갈등 패턴 조회", description = "로그인된 사용자의 커플 기준으로 저장된 AI 판결 이력을 갈등 유형별로 집계합니다.")
+    @ApiResponse(responseCode = "200", description = "반복 갈등 패턴 조회 성공")
+    @GetMapping("/patterns")
+    public List<ConflictPatternResponse> getPatterns(
+            Authentication authentication
+    ) {
+        return judgeService.getPatterns(currentUserId(authentication));
+    }
+
+    @Deprecated
+    @Operation(summary = "AI 판사 판결 이력 조회(호환용)", description = "기존 경로 호환용입니다. 실제 조회 권한은 로그인된 사용자의 커플 기준으로 검증합니다.")
     @ApiResponse(responseCode = "200", description = "판결 이력 조회 성공")
     @GetMapping("/couples/{coupleId}/histories")
     public List<JudgeHistoryResponse> getHistories(
+            Authentication authentication,
             @Parameter(description = "커플 ID", example = "1", required = true)
             @PathVariable Long coupleId
     ) {
-        return judgeService.getHistories(coupleId);
+        return judgeService.getHistories(currentUserId(authentication), coupleId);
     }
 
-    @Operation(summary = "반복 갈등 패턴 조회", description = "저장된 AI 판결 이력을 갈등 유형별로 집계해 반복 패턴을 확인합니다.")
+    @Deprecated
+    @Operation(summary = "반복 갈등 패턴 조회(호환용)", description = "기존 경로 호환용입니다. 실제 조회 권한은 로그인된 사용자의 커플 기준으로 검증합니다.")
     @ApiResponse(responseCode = "200", description = "반복 갈등 패턴 조회 성공")
     @GetMapping("/couples/{coupleId}/patterns")
     public List<ConflictPatternResponse> getPatterns(
+            Authentication authentication,
             @Parameter(description = "커플 ID", example = "1", required = true)
             @PathVariable Long coupleId
     ) {
-        return judgeService.getPatterns(coupleId);
+        return judgeService.getPatterns(currentUserId(authentication), coupleId);
+    }
+
+    private Long currentUserId(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "login is required");
+        }
+        return (Long) authentication.getPrincipal();
     }
 }
