@@ -17,6 +17,8 @@ app:
   memory-storage:
     type: local
     upload-dir: ${java.io.tmpdir}/hear2-test-memory-uploads
+  location-sharing:
+    name-refresh-distance-meters: 50
   emotion:
     analysis:
       enabled: false
