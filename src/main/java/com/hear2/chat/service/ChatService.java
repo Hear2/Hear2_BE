@@ -2,7 +2,6 @@ package com.hear2.chat.service;
 
 import com.hear2.chat.dto.ChatMessageRequest;
 import com.hear2.chat.dto.ChatMessageResponse;
-import com.hear2.chat.dto.ChatReadRequest;
 import com.hear2.chat.dto.ChatReadResponse;
 import com.hear2.chat.entity.ChatMessage;
 import com.hear2.chat.entity.MessageType;
@@ -26,18 +25,21 @@ public class ChatService {
 
     private final ChatMessageRepository chatMessageRepository;
     private final EmotionAnalysisService emotionAnalysisService;
+    private final ChatParticipantResolver chatParticipantResolver;
 
     @Transactional
-    public ChatMessageResponse saveMessage(ChatMessageRequest request) {
-        validateRequiredIds(request);
+    public ChatMessageResponse saveMessage(Long currentUserId, ChatMessageRequest request) {
+        validateRequest(request);
+
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
 
         MessageType messageType = validateMessageType(request.getMessageType());
         validateMessagePayload(request, messageType);
 
         ChatMessage message = ChatMessage.builder()
-                .coupleId(request.getCoupleId())
-                .senderId(request.getSenderId())
-                .receiverId(request.getReceiverId())
+                .coupleId(context.coupleId())
+                .senderId(context.senderId())
+                .receiverId(context.receiverId())
                 .content(normalizeContent(request.getContent(), messageType))
                 .messageType(messageType)
                 .mediaUrl(resolveMediaUrl(request, messageType))
@@ -56,8 +58,10 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public List<ChatMessageResponse> getMessages(Long coupleId) {
-        List<ChatMessage> messages = chatMessageRepository.findByCoupleIdOrderByCreatedAtAsc(coupleId);
+    public List<ChatMessageResponse> getMessages(Long currentUserId) {
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
+
+        List<ChatMessage> messages = chatMessageRepository.findByCoupleIdOrderByCreatedAtAsc(context.coupleId());
         List<Long> messageIds = messages.stream()
                 .map(ChatMessage::getId)
                 .toList();
@@ -69,21 +73,21 @@ public class ChatService {
     }
 
     @Transactional
-    public ChatReadResponse markMessagesAsRead(ChatReadRequest request) {
-        validateReadRequest(request);
+    public ChatReadResponse markMessagesAsRead(Long currentUserId) {
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
 
         List<ChatMessage> unreadMessages = chatMessageRepository
                 .findByCoupleIdAndReceiverIdAndReadAtIsNullOrderByCreatedAtAsc(
-                        request.getCoupleId(),
-                        request.getReaderId()
+                        context.coupleId(),
+                        context.senderId()
                 );
 
         LocalDateTime readAt = LocalDateTime.now();
         unreadMessages.forEach(message -> message.markAsRead(readAt));
 
         return ChatReadResponse.builder()
-                .coupleId(request.getCoupleId())
-                .readerId(request.getReaderId())
+                .coupleId(context.coupleId())
+                .readerId(context.senderId())
                 .readMessageIds(unreadMessages.stream()
                         .map(ChatMessage::getId)
                         .toList())
@@ -91,33 +95,9 @@ public class ChatService {
                 .build();
     }
 
-    private void validateRequiredIds(ChatMessageRequest request) {
+    private void validateRequest(ChatMessageRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message request is required");
-        }
-        if (request.getCoupleId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coupleId is required");
-        }
-        if (request.getSenderId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "senderId is required");
-        }
-        if (request.getReceiverId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "receiverId is required");
-        }
-        if (request.getSenderId().equals(request.getReceiverId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "senderId and receiverId must be different");
-        }
-    }
-
-    private void validateReadRequest(ChatReadRequest request) {
-        if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "read request is required");
-        }
-        if (request.getCoupleId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coupleId is required");
-        }
-        if (request.getReaderId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "readerId is required");
         }
     }
 
@@ -132,9 +112,6 @@ public class ChatService {
         if (messageType == MessageType.TEXT) {
             if (!StringUtils.hasText(request.getContent())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is required for TEXT messages");
-            }
-            if (StringUtils.hasText(request.getMediaUrl())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TEXT messages must not include mediaUrl");
             }
             return;
         }

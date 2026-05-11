@@ -9,6 +9,8 @@ public interface CoupleMemberRepository extends JpaRepository<CoupleMember, Long
 
     Optional<CoupleMember> findByUserId(Long userId);
 
+    Optional<CoupleMember> findFirstByCoupleIdAndUserIdNot(Long coupleId, Long userId);
+
     boolean existsByUserId(Long userId);
 
     boolean existsByCoupleIdAndUserId(Long coupleId, Long userId);
