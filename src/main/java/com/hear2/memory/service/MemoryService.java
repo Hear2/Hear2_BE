@@ -1,5 +1,6 @@
 package com.hear2.memory.service;
 
+import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.memory.dto.MemoryCreateRequest;
 import com.hear2.memory.dto.MemoryResponse;
@@ -35,7 +36,8 @@ public class MemoryService {
 
     @Transactional
     public MemoryResponse createMemory(MultipartFile photo, MemoryCreateRequest request, Long currentUserId) {
-        validateCreateRequest(request, currentUserId);
+        validateCreateRequest(request);
+        Long coupleId = resolveCoupleId(currentUserId);
 
         ExtractedMemoryPhotoMetadata extractedMetadata = memoryPhotoMetadataExtractor.extract(photo);
         LocalDateTime takenAt = resolveTakenAt(request, extractedMetadata);
@@ -44,9 +46,9 @@ public class MemoryService {
         ResolvedMemoryLocation resolvedLocation = resolveLocation(request, latitude, longitude);
         MemoryPhotoFile sanitizedPhoto = memoryPhotoSanitizer.sanitize(photo);
 
-        MemoryPhotoStorageResult storedPhoto = memoryPhotoStorageService.store(sanitizedPhoto, request.getCoupleId());
+        MemoryPhotoStorageResult storedPhoto = memoryPhotoStorageService.store(sanitizedPhoto, coupleId);
         Memory memory = Memory.builder()
-                .coupleId(request.getCoupleId())
+                .coupleId(coupleId)
                 .uploaderId(currentUserId)
                 .storedPhotoPath(storedPhoto.storedPhotoPath())
                 .originalFileName(storedPhoto.originalFileName())
@@ -71,8 +73,8 @@ public class MemoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<MemoryResponse> getAlbum(Long coupleId, Long currentUserId) {
-        validateCoupleMember(coupleId, currentUserId);
+    public List<MemoryResponse> getAlbum(Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
 
         return memoryRepository.findByCoupleIdOrderByMemoryDateDescCreatedAtDesc(coupleId)
                 .stream()
@@ -81,8 +83,8 @@ public class MemoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<MemoryResponse> getMemoriesByDate(Long coupleId, LocalDate memoryDate, Long currentUserId) {
-        validateCoupleMember(coupleId, currentUserId);
+    public List<MemoryResponse> getMemoriesByDate(LocalDate memoryDate, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
         if (memoryDate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memoryDate is required");
         }
@@ -94,26 +96,26 @@ public class MemoryService {
     }
 
     @Transactional(readOnly = true)
-    public MemoryResponse getMemory(Long coupleId, Long memoryId, Long currentUserId) {
-        validateCoupleMember(coupleId, currentUserId);
+    public MemoryResponse getMemory(Long memoryId, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
         return MemoryResponse.from(findMemory(coupleId, memoryId));
     }
 
     @Transactional(readOnly = true)
-    public MemoryPhotoContent getMemoryPhoto(Long coupleId, Long memoryId, Long currentUserId) {
-        validateCoupleMember(coupleId, currentUserId);
+    public MemoryPhotoContent getMemoryPhoto(Long memoryId, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
         Memory memory = findMemory(coupleId, memoryId);
 
         return memoryPhotoStorageService.load(memory.getStoredPhotoPath(), memory.getPhotoContentType());
     }
 
     @Transactional
-    public MemoryResponse updateMemory(Long coupleId, Long memoryId, MemoryUpdateRequest request, Long currentUserId) {
+    public MemoryResponse updateMemory(Long memoryId, MemoryUpdateRequest request, Long currentUserId) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory update request is required");
         }
 
-        validateCoupleMember(coupleId, currentUserId);
+        Long coupleId = resolveCoupleId(currentUserId);
         Memory memory = findMemory(coupleId, memoryId);
         memory.updateMemo(normalizeMemo(request.getMemo()));
 
@@ -121,8 +123,8 @@ public class MemoryService {
     }
 
     @Transactional
-    public void deleteMemory(Long coupleId, Long memoryId, Long currentUserId) {
-        validateCoupleMember(coupleId, currentUserId);
+    public void deleteMemory(Long memoryId, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
         Memory memory = findMemory(coupleId, memoryId);
 
         memoryPhotoStorageService.delete(memory.getStoredPhotoPath());
@@ -161,11 +163,10 @@ public class MemoryService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "memory not found"));
     }
 
-    private void validateCreateRequest(MemoryCreateRequest request, Long currentUserId) {
+    private void validateCreateRequest(MemoryCreateRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory create request is required");
         }
-        validateCoupleMember(request.getCoupleId(), currentUserId);
     }
 
     private void validateCoupleId(Long coupleId) {
@@ -180,13 +181,13 @@ public class MemoryService {
         }
     }
 
-    private void validateCoupleMember(Long coupleId, Long currentUserId) {
-        validateCoupleId(coupleId);
+    private Long resolveCoupleId(Long currentUserId) {
         validateCurrentUserId(currentUserId);
 
-        if (!coupleMemberRepository.existsByCoupleIdAndUserId(coupleId, currentUserId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "user is not a member of this couple");
-        }
+        CoupleMember member = coupleMemberRepository.findByUserId(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple connection not found"));
+
+        return member.getCoupleId();
     }
 
     private LocalDate resolveMemoryDate(LocalDateTime takenAt) {

@@ -81,12 +81,10 @@ class MemoryAuthenticationControllerTest {
     void createMemoryUsesAuthenticatedUserAsUploader() throws Exception {
         String requestJson = """
                 {
-                  "coupleId": %d,
-                  "uploaderId": 999999,
                   "memo": "로그인 사용자 기준 저장",
                   "takenAt": "2026-05-11T10:30:00"
                 }
-                """.formatted(couple.getCoupleId());
+                """;
 
         mockMvc.perform(multipart("/api/v1/memories")
                         .file(photoPart())
@@ -103,7 +101,29 @@ class MemoryAuthenticationControllerTest {
     }
 
     @Test
-    void getAlbumRejectsUserWhoIsNotCoupleMember() throws Exception {
+    void getAlbumUsesAuthenticatedUsersCouple() throws Exception {
+        String requestJson = """
+                {
+                  "memo": "앨범 조회 테스트",
+                  "takenAt": "2026-05-11T10:30:00"
+                }
+                """;
+
+        mockMvc.perform(multipart("/api/v1/memories")
+                        .file(photoPart())
+                        .file(jsonPart(requestJson))
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/memories")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].coupleId").value(couple.getCoupleId()))
+                .andExpect(jsonPath("$.data[0].memo").value("앨범 조회 테스트"));
+    }
+
+    @Test
+    void getAlbumRejectsUserWithoutCoupleConnection() throws Exception {
         User otherUser = userRepository.save(User.builder()
                 .email("other-memory-user@example.com")
                 .password("encoded-password")
@@ -111,10 +131,10 @@ class MemoryAuthenticationControllerTest {
                 .provider("LOCAL")
                 .build());
 
-        mockMvc.perform(get("/api/v1/memories/couples/{coupleId}", couple.getCoupleId())
+        mockMvc.perform(get("/api/v1/memories")
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser.getUserId())))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("user is not a member of this couple"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("couple connection not found"));
     }
 
     private MockMultipartFile photoPart() {
