@@ -1,7 +1,7 @@
 package com.hear2.global.config;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -13,7 +13,7 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import java.net.URI;
 
 @Configuration
-@ConditionalOnProperty(name = "app.file-storage.type", havingValue = "r2")
+@ConditionalOnExpression("'${app.file-storage.type:local}' == 'r2' || '${app.memory-storage.type:local}' == 'r2'")
 public class R2Config {
 
     @Value("${cloudflare.r2.access-key}")
