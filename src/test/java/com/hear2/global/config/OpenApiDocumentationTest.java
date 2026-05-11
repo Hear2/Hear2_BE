@@ -26,7 +26,7 @@ class OpenApiDocumentationTest {
                 .andExpect(content().string(containsString("\"/api/v1/emotions/analyze\"")))
                 .andExpect(content().string(containsString("\"/api/v1/notifications/fcm-tokens\"")))
                 .andExpect(content().string(containsString("\"/api/v1/judge\"")))
-                .andExpect(content().string(containsString("\"/api/v1/judge/couples/{coupleId}/histories\"")))
-                .andExpect(content().string(containsString("\"/api/v1/judge/couples/{coupleId}/patterns\"")));
+                .andExpect(content().string(containsString("\"/api/v1/judge/histories\"")))
+                .andExpect(content().string(containsString("\"/api/v1/judge/patterns\"")));
     }
 }
