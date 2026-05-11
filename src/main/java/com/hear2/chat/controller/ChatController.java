@@ -104,18 +104,6 @@ public class ChatController {
         return chatService.getMessages(currentUserId(authentication));
     }
 
-    @Deprecated
-    @Operation(summary = "커플 채팅 메시지 목록 조회(호환용)", description = "기존 경로 호환을 위해 남겨둔 API입니다. 실제 조회는 로그인된 사용자의 커플 기준으로 수행됩니다.")
-    @ApiResponse(responseCode = "200", description = "메시지 목록 조회 성공")
-    @GetMapping("/couples/{coupleId}/messages")
-    public List<ChatMessageResponse> getMessagesLegacy(
-            Authentication authentication,
-            @Parameter(description = "기존 호출 호환용 커플 ID", example = "1", required = true)
-            @PathVariable Long coupleId
-    ) {
-        return chatService.getMessages(currentUserId(authentication));
-    }
-
     private Long currentUserId(Authentication authentication) {
         if (authentication == null || authentication.getPrincipal() == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "login is required");

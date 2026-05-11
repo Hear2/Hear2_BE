@@ -65,9 +65,7 @@ class JudgeServiceTest {
                 .thenReturn(1L);
 
         JudgeRequest request = new JudgeRequest();
-        request.setCoupleId(1L);
         request.setTriggerMessageId(100L);
-        request.setRequestedByUserId(999L);
 
         judgeService.judge(10L, request);
 
@@ -75,19 +73,6 @@ class JudgeServiceTest {
         verify(judgeAnalysisClient).requestJudgement(captor.capture());
         assertThat(captor.getValue().getCoupleId()).isEqualTo(1L);
         assertThat(captor.getValue().getRequestedByUserId()).isEqualTo(10L);
-    }
-
-    @Test
-    void rejectsRequestedCoupleThatIsNotLoggedInUsersCouple() {
-        when(chatParticipantResolver.resolve(10L))
-                .thenReturn(new ChatParticipantResolver.ChatRoomContext(1L, 10L, 11L));
-        JudgeRequest request = new JudgeRequest();
-        request.setCoupleId(2L);
-        request.setTriggerMessageId(100L);
-
-        assertThatThrownBy(() -> judgeService.judge(10L, request))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("couple access denied");
     }
 
     @Test

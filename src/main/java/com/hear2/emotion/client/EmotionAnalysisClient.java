@@ -1,7 +1,6 @@
 package com.hear2.emotion.client;
 
 import com.hear2.emotion.config.EmotionAnalysisProperties;
-import com.hear2.emotion.dto.EmotionAnalysisRequest;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
 import com.hear2.emotion.enums.EmotionType;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +35,7 @@ public class EmotionAnalysisClient {
         this.restTemplate = new RestTemplate(requestFactory);
     }
 
-    public EmotionAnalysisResponse analyze(EmotionAnalysisRequest request) {
+    public EmotionAnalysisResponse analyze(Long messageId, String content) {
         if (!properties.isEnabled()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "emotion analysis is disabled");
         }
@@ -44,7 +43,7 @@ public class EmotionAnalysisClient {
         try {
             EmotionAnalysisResponse response = restTemplate.postForObject(
                     analyzeUri(),
-                    fastApiRequest(request),
+                    fastApiRequest(messageId, content),
                     EmotionAnalysisResponse.class
             );
 
@@ -55,11 +54,11 @@ public class EmotionAnalysisClient {
             return normalize(response);
         } catch (HttpStatusCodeException ex) {
             log.warn("FastAPI emotion analysis returned error. messageId={}, status={}, body={}",
-                    request.getMessageId(), ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+                    messageId, ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "FastAPI emotion analysis returned error: " + ex.getResponseBodyAsString(), ex);
         } catch (RestClientException ex) {
-            log.warn("FastAPI emotion analysis request failed. messageId={}", request.getMessageId(), ex);
+            log.warn("FastAPI emotion analysis request failed. messageId={}", messageId, ex);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "FastAPI emotion analysis request failed", ex);
         }
     }
@@ -71,14 +70,11 @@ public class EmotionAnalysisClient {
                 .toUri();
     }
 
-    private Map<String, Object> fastApiRequest(EmotionAnalysisRequest request) {
+    private Map<String, Object> fastApiRequest(Long messageId, String content) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("message", request.getContent());
-        body.put("content", request.getContent());
-        body.put("message_id", request.getMessageId());
-        body.put("couple_id", request.getCoupleId());
-        body.put("sender_id", request.getSenderId());
-        body.put("receiver_id", request.getReceiverId());
+        body.put("message", content);
+        body.put("content", content);
+        body.put("message_id", messageId);
         return body;
     }
 

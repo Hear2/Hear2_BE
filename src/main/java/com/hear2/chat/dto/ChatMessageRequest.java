@@ -18,18 +18,6 @@ import lombok.NoArgsConstructor;
 )
 public class ChatMessageRequest {
 
-    @Deprecated
-    @Schema(description = "호환용 필드. 로그인 사용자 기준으로 무시됩니다.", hidden = true)
-    private Long coupleId;
-
-    @Deprecated
-    @Schema(description = "호환용 필드. 로그인 사용자 기준으로 무시됩니다.", hidden = true)
-    private Long senderId;
-
-    @Deprecated
-    @Schema(description = "호환용 필드. 로그인 사용자 기준으로 무시됩니다.", hidden = true)
-    private Long receiverId;
-
     @Schema(description = "메시지 내용. TEXT 메시지는 필수입니다.", example = "오늘 너무 고마웠어")
     private String content;
 

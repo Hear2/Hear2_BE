@@ -46,7 +46,7 @@ public class JudgeService {
     @Transactional
     public JudgeResponse judge(Long currentUserId, JudgeRequest request) {
         validateJudgeRequest(request);
-        ChatParticipantResolver.ChatRoomContext context = resolveAuthorizedContext(currentUserId, request.getCoupleId());
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
 
         ChatMessage triggerMessage = chatMessageRepository.findById(request.getTriggerMessageId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "trigger message not found"));
@@ -111,20 +111,8 @@ public class JudgeService {
     }
 
     @Transactional(readOnly = true)
-    public List<JudgeHistoryResponse> getHistories(Long currentUserId, Long coupleId) {
-        ChatParticipantResolver.ChatRoomContext context = resolveAuthorizedContext(currentUserId, coupleId);
-        return findHistories(context.coupleId());
-    }
-
-    @Transactional(readOnly = true)
     public List<ConflictPatternResponse> getPatterns(Long currentUserId) {
         ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
-        return findPatterns(context.coupleId());
-    }
-
-    @Transactional(readOnly = true)
-    public List<ConflictPatternResponse> getPatterns(Long currentUserId, Long coupleId) {
-        ChatParticipantResolver.ChatRoomContext context = resolveAuthorizedContext(currentUserId, coupleId);
         return findPatterns(context.coupleId());
     }
 
@@ -166,14 +154,6 @@ public class JudgeService {
         if (request.getTriggerMessageId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "triggerMessageId is required");
         }
-    }
-
-    private ChatParticipantResolver.ChatRoomContext resolveAuthorizedContext(Long currentUserId, Long requestedCoupleId) {
-        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
-        if (requestedCoupleId != null && !context.coupleId().equals(requestedCoupleId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "couple access denied");
-        }
-        return context;
     }
 
     private EmotionAnalysis findTriggerEmotionAnalysis(Long triggerMessageId) {

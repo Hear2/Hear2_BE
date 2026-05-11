@@ -1,8 +1,9 @@
 package com.hear2.emotion.service;
 
 import com.hear2.chat.entity.ChatMessage;
+import com.hear2.chat.repository.ChatMessageRepository;
+import com.hear2.chat.service.ChatParticipantResolver;
 import com.hear2.emotion.client.EmotionAnalysisClient;
-import com.hear2.emotion.dto.EmotionAnalysisRequest;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
 import com.hear2.emotion.dto.RiskAnalysisResponse;
 import com.hear2.emotion.entity.EmotionAnalysis;
@@ -25,14 +26,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EmotionAnalysisService {
 
+    private final ChatMessageRepository chatMessageRepository;
     private final EmotionAnalysisRepository emotionAnalysisRepository;
     private final EmotionAnalysisClient emotionAnalysisClient;
     private final RiskDetectionService riskDetectionService;
     private final FcmNotificationService fcmNotificationService;
+    private final ChatParticipantResolver chatParticipantResolver;
 
     @Transactional
     public EmotionAnalysisResponse analyzeAndSave(ChatMessage message) {
-        EmotionAnalysisResponse response = analyzeContent(EmotionAnalysisRequest.from(message));
+        EmotionAnalysisResponse response = analyzeContent(message.getId(), message.getContent());
 
         EmotionAnalysis analysis = EmotionAnalysis.builder()
                 .message(message)
@@ -52,13 +55,33 @@ public class EmotionAnalysisService {
         return response;
     }
 
-    public EmotionAnalysisResponse analyzeContent(EmotionAnalysisRequest request) {
-        if (request == null || !StringUtils.hasText(request.getContent())) {
+    public EmotionAnalysisResponse analyzeMessageForUser(Long currentUserId, Long messageId) {
+        if (currentUserId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "login is required");
+        }
+        if (messageId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "messageId is required");
+        }
+
+        ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
+        ChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "message not found"));
+        if (!context.coupleId().equals(message.getCoupleId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "message does not belong to your couple");
+        }
+
+        return emotionAnalysisRepository.findByMessageId(messageId)
+                .map(this::toResponse)
+                .orElseGet(() -> analyzeAndSave(message));
+    }
+
+    private EmotionAnalysisResponse analyzeContent(Long messageId, String content) {
+        if (!StringUtils.hasText(content)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is required for emotion analysis");
         }
 
-        EmotionAnalysisResponse analyzed = emotionAnalysisClient.analyze(request);
-        RiskAnalysisResponse risk = riskDetectionService.analyze(request.getContent(), analyzed);
+        EmotionAnalysisResponse analyzed = emotionAnalysisClient.analyze(messageId, content);
+        RiskAnalysisResponse risk = riskDetectionService.analyze(content, analyzed);
 
         return mergeRisk(analyzed, risk);
     }
