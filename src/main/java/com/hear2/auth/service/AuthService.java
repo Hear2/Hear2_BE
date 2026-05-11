@@ -2,6 +2,7 @@ package com.hear2.auth.service;
 
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
+import com.hear2.auth.dto.MeResponse;
 import com.hear2.auth.dto.SignupRequest;
 import com.hear2.auth.dto.TokenResponse;
 import com.hear2.global.security.JwtProvider;
@@ -50,6 +51,14 @@ public class AuthService {
         }
 
         return AuthResponse.from(user, createToken(user));
+    }
+
+    @Transactional(readOnly = true)
+    public MeResponse getMe(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found"));
+
+        return MeResponse.from(user);
     }
 
     private TokenResponse createToken(User user) {
