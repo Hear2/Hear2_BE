@@ -25,6 +25,8 @@ app:
   memory-storage:
     type: ${MEMORY_STORAGE_TYPE:local}
     upload-dir: ${MEMORY_UPLOAD_DIR:memory-uploads}
+  location-sharing:
+    name-refresh-distance-meters: ${LOCATION_NAME_REFRESH_DISTANCE_METERS:50}
   emotion:
     analysis:
       enabled: ${EMOTION_ANALYSIS_ENABLED:true}
