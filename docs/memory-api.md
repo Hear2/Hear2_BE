@@ -13,7 +13,7 @@ Form data:
 | Key | Type | Required | Description |
 | --- | --- | --- | --- |
 | `photo` | File | Yes | `jpg`, `jpeg`, or `png` memory photo. |
-| `request` | JSON | Yes | Memory metadata. Set this part's content type to `application/json`. |
+| `request` | String | Yes | Memory metadata JSON string. Swagger/curl may send it as a normal form field; `application/json` part type is not required. |
 
 `request` example:
 
@@ -24,6 +24,21 @@ Form data:
   "latitude": 37.5445,
   "longitude": 127.0374
 }
+```
+
+If you want the server to use only photo EXIF metadata, send an empty JSON object:
+
+```json
+{}
+```
+
+curl example:
+
+```bash
+curl -X POST 'http://localhost:8080/api/v1/memories' \
+  -H 'Authorization: Bearer {accessToken}' \
+  -F 'photo=@IMG_8929.JPG;type=image/jpeg' \
+  -F 'request={}'
 ```
 
 Notes:
