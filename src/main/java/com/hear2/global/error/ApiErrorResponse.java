@@ -8,18 +8,18 @@ import java.time.LocalDateTime;
 
 @Getter
 @Builder
-@Schema(description = "API 오류 응답")
+@Schema(description = "API error response")
 public class ApiErrorResponse {
 
-    @Schema(description = "HTTP 상태 코드", example = "400")
+    @Schema(description = "HTTP status code", example = "400")
     private int status;
 
-    @Schema(description = "HTTP 오류 이름", example = "Bad Request")
+    @Schema(description = "HTTP error name", example = "Bad Request")
     private String error;
 
-    @Schema(description = "오류 메시지", example = "content is required for emotion analysis")
+    @Schema(description = "Error message", example = "email: must be a well-formed email address")
     private String message;
 
-    @Schema(description = "오류 발생 시각", example = "2026-05-07T01:10:00")
+    @Schema(description = "Error timestamp", example = "2026-05-07T01:10:00")
     private LocalDateTime timestamp;
 }

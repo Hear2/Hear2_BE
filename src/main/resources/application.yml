@@ -3,9 +3,9 @@ spring:
     name: hear2
 
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${SPRING_DATASOURCE_URL:}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -39,6 +39,11 @@ app:
     enabled: ${FCM_ENABLED:false}
     credentials-path: ${FCM_CREDENTIALS_PATH:}
     project-id: ${FCM_PROJECT_ID:}
+  jwt:
+    # TODO: set JWT_SECRET in the deployment environment.
+    secret: ${JWT_SECRET:}
+    # TODO: set JWT_ACCESS_TOKEN_EXPIRATION_SECONDS in the deployment environment.
+    access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:}
 
 cloudflare:
   r2:

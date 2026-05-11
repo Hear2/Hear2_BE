@@ -31,6 +31,9 @@ app:
     enabled: false
     credentials-path:
     project-id:
+  jwt:
+    secret: test-secret
+    access-token-expiration-seconds: 3600
 
 openai:
   api-key:
