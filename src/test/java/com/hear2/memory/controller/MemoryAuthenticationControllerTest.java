@@ -101,6 +101,25 @@ class MemoryAuthenticationControllerTest {
     }
 
     @Test
+    void createMemoryAcceptsJsonRequestPartWithoutJsonContentType() throws Exception {
+        String requestJson = """
+                {
+                  "memo": "스웨거 form-data 요청",
+                  "takenAt": "2026-05-11T10:30:00"
+                }
+                """;
+
+        mockMvc.perform(multipart("/api/v1/memories")
+                        .file(photoPart())
+                        .file(formTextPart(requestJson))
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.uploaderId").value(user.getUserId()))
+                .andExpect(jsonPath("$.data.coupleId").value(couple.getCoupleId()))
+                .andExpect(jsonPath("$.data.memo").value("스웨거 form-data 요청"));
+    }
+
+    @Test
     void getAlbumUsesAuthenticatedUsersCouple() throws Exception {
         String requestJson = """
                 {
@@ -151,6 +170,15 @@ class MemoryAuthenticationControllerTest {
                 "request",
                 "",
                 MediaType.APPLICATION_JSON_VALUE,
+                requestJson.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    private MockMultipartFile formTextPart(String requestJson) {
+        return new MockMultipartFile(
+                "request",
+                "",
+                null,
                 requestJson.getBytes(StandardCharsets.UTF_8)
         );
     }

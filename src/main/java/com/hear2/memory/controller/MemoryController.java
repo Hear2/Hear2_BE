@@ -10,7 +10,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
+import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -21,9 +23,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.util.StringUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/memories")
@@ -32,6 +38,8 @@ import java.util.List;
 public class MemoryController {
 
     private final MemoryService memoryService;
+    private final ObjectMapper objectMapper;
+    private final Validator validator;
 
     @Operation(
             summary = "추억 사진 업로드",
@@ -42,10 +50,17 @@ public class MemoryController {
             Authentication authentication,
             @Parameter(description = "업로드할 사진 파일", required = true, schema = @Schema(type = "string", format = "binary"))
             @RequestPart("photo") MultipartFile photo,
-            @Parameter(description = "추억 메타데이터 JSON. memo, takenAt, latitude, longitude, locationName만 보내면 됩니다.", required = true, schema = @Schema(implementation = MemoryCreateRequest.class))
-            @Valid @RequestPart("request") MemoryCreateRequest request
+            @Parameter(
+                    description = "추억 메타데이터 JSON 문자열. 사진 EXIF만 사용할 경우 {} 를 보내면 됩니다.",
+                    required = true,
+                    schema = @Schema(
+                            type = "string",
+                            example = "{\"memo\":\"명지대에서 찍은 사진\",\"takenAt\":\"2026-05-11T10:30:00\",\"latitude\":37.2221,\"longitude\":127.1875,\"locationName\":\"명지대학교 자연캠퍼스\"}"
+                    )
+            )
+            @RequestPart("request") String request
     ) {
-        return ApiResponse.success(memoryService.createMemory(photo, request, currentUserId(authentication)));
+        return ApiResponse.success(memoryService.createMemory(photo, parseCreateRequest(request), currentUserId(authentication)));
     }
 
     @Operation(summary = "내 추억 앨범 조회", description = "로그인된 사용자의 커플 기준으로 추억 앨범을 최신순으로 조회합니다.")
@@ -112,5 +127,31 @@ public class MemoryController {
         }
 
         return userId;
+    }
+
+    private MemoryCreateRequest parseCreateRequest(String request) {
+        String requestJson = StringUtils.hasText(request) ? request : "{}";
+
+        try {
+            MemoryCreateRequest createRequest = objectMapper.readValue(requestJson, MemoryCreateRequest.class);
+            validateCreateRequest(createRequest);
+            return createRequest;
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request must be valid JSON");
+        }
+    }
+
+    private void validateCreateRequest(MemoryCreateRequest request) {
+        Set<ConstraintViolation<MemoryCreateRequest>> violations = validator.validate(request);
+        if (violations.isEmpty()) {
+            return;
+        }
+
+        String message = violations.stream()
+                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
+                .collect(Collectors.joining(", "));
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
 }
