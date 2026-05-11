@@ -31,7 +31,7 @@ public class ChatController {
 
     @Operation(
             summary = "채팅 메시지 전송",
-            description = "TEXT 메시지는 저장 직후 감정 분석을 수행하고, 감정 이모지와 리스크 정보를 응답에 포함합니다. 리스크가 감지되면 상대방에게 FCM 알림 발송을 시도합니다."
+            description = "TEXT 메시지는 저장 직후 GPT-4o 기반 감정 분석을 수행하고, 감정 이모지/점수/리스크 정보와 AI 판사 호출 가능 여부를 응답에 포함합니다. 주의/경고/위험 리스크가 감지되면 상대방에게 FCM 알림 발송을 시도합니다."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "메시지 전송 성공",

@@ -22,8 +22,9 @@ app:
   emotion:
     analysis:
       enabled: false
-      base-url: http://localhost:8000
+      base-url: http://127.0.0.1:8000
       analyze-path: /analyze
+      judge-path: /judge
       connect-timeout-ms: 1500
       read-timeout-ms: 5000
   fcm:
