@@ -56,9 +56,7 @@ public class MemoryResponse {
             return null;
         }
 
-        return "/api/v1/memories/couples/"
-                + memory.getCoupleId()
-                + "/items/"
+        return "/api/v1/memories/items/"
                 + memory.getId()
                 + "/photo";
     }
