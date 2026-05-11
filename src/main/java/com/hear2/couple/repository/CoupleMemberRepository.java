@@ -11,5 +11,7 @@ public interface CoupleMemberRepository extends JpaRepository<CoupleMember, Long
 
     boolean existsByUserId(Long userId);
 
+    boolean existsByCoupleIdAndUserId(Long coupleId, Long userId);
+
     long countByCoupleId(Long coupleId);
 }

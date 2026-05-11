@@ -17,7 +17,6 @@ public class MemoryCreateRequest {
     @NotNull
     private Long coupleId;
 
-    @NotNull
     private Long uploaderId;
 
     @Size(max = 1000)
