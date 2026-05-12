@@ -3,11 +3,20 @@ package com.hear2.auth.service;
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
+import com.hear2.auth.dto.PasswordResetConfirmRequest;
+import com.hear2.auth.dto.PasswordResetRequest;
+import com.hear2.auth.dto.PasswordResetResponse;
+import com.hear2.auth.dto.PasswordResetVerifyRequest;
+import com.hear2.auth.dto.PasswordResetVerifyResponse;
 import com.hear2.auth.dto.ReissueRequest;
 import com.hear2.auth.dto.SignupRequest;
 import com.hear2.auth.dto.TokenResponse;
+import com.hear2.auth.entity.PasswordResetToken;
 import com.hear2.auth.entity.RefreshToken;
+import com.hear2.auth.repository.PasswordResetTokenRepository;
 import com.hear2.auth.repository.RefreshTokenRepository;
+import com.hear2.global.mail.EmailSendException;
+import com.hear2.global.mail.EmailService;
 import com.hear2.global.security.JwtProvider;
 import com.hear2.user.entity.User;
 import com.hear2.user.repository.UserRepository;
@@ -21,6 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
 
@@ -28,10 +38,16 @@ import java.util.Base64;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final int PASSWORD_RESET_TOKEN_BYTES = 32;
+    private static final long PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = 30;
+
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+    private final EmailService emailService;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
     public AuthResponse signup(SignupRequest request) {
@@ -74,6 +90,47 @@ public class AuthService {
     @Transactional
     public void logout(Long userId) {
         refreshTokenRepository.deleteByUserId(userId);
+    }
+
+    @Transactional
+    public PasswordResetResponse requestPasswordReset(PasswordResetRequest request) {
+        userRepository.findByEmail(request.getEmail())
+                .ifPresent(user -> {
+                    String resetToken = savePasswordResetToken(user);
+                    sendPasswordResetEmail(user.getEmail(), resetToken);
+                });
+
+        return PasswordResetResponse.success();
+    }
+
+    @Transactional(readOnly = true)
+    public PasswordResetVerifyResponse verifyPasswordResetToken(PasswordResetVerifyRequest request) {
+        if (!StringUtils.hasText(request.getToken())) {
+            return PasswordResetVerifyResponse.of(false);
+        }
+
+        boolean valid = passwordResetTokenRepository.findByTokenHash(hashToken(request.getToken()))
+                .map(token -> LocalDateTime.now().isBefore(token.getExpiresAt()))
+                .orElse(false);
+
+        return PasswordResetVerifyResponse.of(valid);
+    }
+
+    @Transactional
+    public PasswordResetResponse confirmPasswordReset(PasswordResetConfirmRequest request) {
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(hashToken(request.getToken()))
+                .orElseThrow(this::invalidPasswordResetToken);
+
+        if (!LocalDateTime.now().isBefore(resetToken.getExpiresAt())) {
+            throw invalidPasswordResetToken();
+        }
+
+        User user = userRepository.findById(resetToken.getUserId())
+                .orElseThrow(this::invalidPasswordResetToken);
+        user.changePassword(passwordEncoder.encode(request.getNewPassword()));
+        passwordResetTokenRepository.delete(resetToken);
+
+        return PasswordResetResponse.success();
     }
 
     @Transactional(readOnly = true)
@@ -125,17 +182,50 @@ public class AuthService {
         refreshTokenRepository.save(savedToken);
     }
 
+    private String savePasswordResetToken(User user) {
+        String resetToken = createOpaqueToken();
+        String tokenHash = hashToken(resetToken);
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES);
+
+        PasswordResetToken savedToken = passwordResetTokenRepository.findByUserId(user.getUserId())
+                .orElseGet(() -> PasswordResetToken.builder()
+                        .userId(user.getUserId())
+                        .build());
+        savedToken.rotate(tokenHash, expiresAt);
+
+        passwordResetTokenRepository.save(savedToken);
+        return resetToken;
+    }
+
+    private void sendPasswordResetEmail(String email, String resetToken) {
+        try {
+            emailService.sendPasswordResetEmail(email, resetToken);
+        } catch (EmailSendException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "failed to send password reset email", exception);
+        }
+    }
+
+    private String createOpaqueToken() {
+        byte[] randomBytes = new byte[PASSWORD_RESET_TOKEN_BYTES];
+        secureRandom.nextBytes(randomBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    }
+
     private String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(hash);
         } catch (Exception exception) {
-            throw new IllegalStateException("failed to hash refresh token", exception);
+            throw new IllegalStateException("failed to hash token", exception);
         }
     }
 
     private ResponseStatusException unauthorized() {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid refresh token");
+    }
+
+    private ResponseStatusException invalidPasswordResetToken() {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid password reset token");
     }
 }
