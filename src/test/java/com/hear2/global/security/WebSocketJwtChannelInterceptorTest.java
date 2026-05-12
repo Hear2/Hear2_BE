@@ -21,7 +21,8 @@ class WebSocketJwtChannelInterceptorTest {
 
     private final JwtProvider jwtProvider = new JwtProvider(
             "test-secret-key-for-websocket-auth",
-            3600L
+            3600L,
+            1209600L
     );
     private final ChatParticipantResolver chatParticipantResolver = mock(ChatParticipantResolver.class);
     private final WebSocketJwtChannelInterceptor interceptor = new WebSocketJwtChannelInterceptor(
