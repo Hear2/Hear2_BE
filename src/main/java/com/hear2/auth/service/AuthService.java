@@ -71,6 +71,11 @@ public class AuthService {
         return MeResponse.from(user);
     }
 
+    @Transactional
+    public void logout(Long userId) {
+        refreshTokenRepository.deleteByUserId(userId);
+    }
+
     @Transactional(readOnly = true)
     public TokenResponse reissue(ReissueRequest request) {
         String refreshToken = request.getRefreshToken();
