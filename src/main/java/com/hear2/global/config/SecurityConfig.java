@@ -32,6 +32,7 @@ public class SecurityConfig {
                         "/api/v1/auth/login",
                         "/api/v1/auth/reissue",
                         "/api/v1/auth/password-reset/request",
+                        "/api/v1/auth/password-reset/verify",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
                         "/v3/api-docs/**",
@@ -47,7 +48,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/signup",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/reissue",
-                                "/api/v1/auth/password-reset/request"
+                                "/api/v1/auth/password-reset/request",
+                                "/api/v1/auth/password-reset/verify"
                         ).permitAll()
                         .requestMatchers(
                                 "/swagger-ui/**",

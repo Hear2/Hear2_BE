@@ -5,6 +5,8 @@ import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
 import com.hear2.auth.dto.PasswordResetRequest;
 import com.hear2.auth.dto.PasswordResetResponse;
+import com.hear2.auth.dto.PasswordResetVerifyRequest;
+import com.hear2.auth.dto.PasswordResetVerifyResponse;
 import com.hear2.auth.dto.ReissueRequest;
 import com.hear2.auth.dto.SignupRequest;
 import com.hear2.auth.dto.TokenResponse;
@@ -92,6 +94,19 @@ public class AuthService {
                 .ifPresent(this::savePasswordResetToken);
 
         return PasswordResetResponse.success();
+    }
+
+    @Transactional(readOnly = true)
+    public PasswordResetVerifyResponse verifyPasswordResetToken(PasswordResetVerifyRequest request) {
+        if (!StringUtils.hasText(request.getToken())) {
+            return PasswordResetVerifyResponse.of(false);
+        }
+
+        boolean valid = passwordResetTokenRepository.findByTokenHash(hashToken(request.getToken()))
+                .map(token -> LocalDateTime.now().isBefore(token.getExpiresAt()))
+                .orElse(false);
+
+        return PasswordResetVerifyResponse.of(valid);
     }
 
     @Transactional(readOnly = true)
