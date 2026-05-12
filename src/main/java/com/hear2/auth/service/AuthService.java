@@ -15,6 +15,8 @@ import com.hear2.auth.entity.PasswordResetToken;
 import com.hear2.auth.entity.RefreshToken;
 import com.hear2.auth.repository.PasswordResetTokenRepository;
 import com.hear2.auth.repository.RefreshTokenRepository;
+import com.hear2.global.mail.EmailSendException;
+import com.hear2.global.mail.EmailService;
 import com.hear2.global.security.JwtProvider;
 import com.hear2.user.entity.User;
 import com.hear2.user.repository.UserRepository;
@@ -44,6 +46,7 @@ public class AuthService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+    private final EmailService emailService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -92,7 +95,10 @@ public class AuthService {
     @Transactional
     public PasswordResetResponse requestPasswordReset(PasswordResetRequest request) {
         userRepository.findByEmail(request.getEmail())
-                .ifPresent(this::savePasswordResetToken);
+                .ifPresent(user -> {
+                    String resetToken = savePasswordResetToken(user);
+                    sendPasswordResetEmail(user.getEmail(), resetToken);
+                });
 
         return PasswordResetResponse.success();
     }
@@ -176,7 +182,7 @@ public class AuthService {
         refreshTokenRepository.save(savedToken);
     }
 
-    private void savePasswordResetToken(User user) {
+    private String savePasswordResetToken(User user) {
         String resetToken = createOpaqueToken();
         String tokenHash = hashToken(resetToken);
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES);
@@ -188,6 +194,15 @@ public class AuthService {
         savedToken.rotate(tokenHash, expiresAt);
 
         passwordResetTokenRepository.save(savedToken);
+        return resetToken;
+    }
+
+    private void sendPasswordResetEmail(String email, String resetToken) {
+        try {
+            emailService.sendPasswordResetEmail(email, resetToken);
+        } catch (EmailSendException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "failed to send password reset email", exception);
+        }
     }
 
     private String createOpaqueToken() {
