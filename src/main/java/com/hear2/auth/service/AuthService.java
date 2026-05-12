@@ -3,10 +3,14 @@ package com.hear2.auth.service;
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
+import com.hear2.auth.dto.PasswordResetRequest;
+import com.hear2.auth.dto.PasswordResetResponse;
 import com.hear2.auth.dto.ReissueRequest;
 import com.hear2.auth.dto.SignupRequest;
 import com.hear2.auth.dto.TokenResponse;
+import com.hear2.auth.entity.PasswordResetToken;
 import com.hear2.auth.entity.RefreshToken;
+import com.hear2.auth.repository.PasswordResetTokenRepository;
 import com.hear2.auth.repository.RefreshTokenRepository;
 import com.hear2.global.security.JwtProvider;
 import com.hear2.user.entity.User;
@@ -21,6 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
 
@@ -28,10 +33,15 @@ import java.util.Base64;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final int PASSWORD_RESET_TOKEN_BYTES = 32;
+    private static final long PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = 30;
+
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
     public AuthResponse signup(SignupRequest request) {
@@ -74,6 +84,14 @@ public class AuthService {
     @Transactional
     public void logout(Long userId) {
         refreshTokenRepository.deleteByUserId(userId);
+    }
+
+    @Transactional
+    public PasswordResetResponse requestPasswordReset(PasswordResetRequest request) {
+        userRepository.findByEmail(request.getEmail())
+                .ifPresent(this::savePasswordResetToken);
+
+        return PasswordResetResponse.success();
     }
 
     @Transactional(readOnly = true)
@@ -125,13 +143,33 @@ public class AuthService {
         refreshTokenRepository.save(savedToken);
     }
 
+    private void savePasswordResetToken(User user) {
+        String resetToken = createOpaqueToken();
+        String tokenHash = hashToken(resetToken);
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES);
+
+        PasswordResetToken savedToken = passwordResetTokenRepository.findByUserId(user.getUserId())
+                .orElseGet(() -> PasswordResetToken.builder()
+                        .userId(user.getUserId())
+                        .build());
+        savedToken.rotate(tokenHash, expiresAt);
+
+        passwordResetTokenRepository.save(savedToken);
+    }
+
+    private String createOpaqueToken() {
+        byte[] randomBytes = new byte[PASSWORD_RESET_TOKEN_BYTES];
+        secureRandom.nextBytes(randomBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    }
+
     private String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(hash);
         } catch (Exception exception) {
-            throw new IllegalStateException("failed to hash refresh token", exception);
+            throw new IllegalStateException("failed to hash token", exception);
         }
     }
 
