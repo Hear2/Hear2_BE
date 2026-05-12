@@ -3,10 +3,13 @@ package com.hear2.auth.controller;
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
+import com.hear2.auth.dto.ReissueRequest;
 import com.hear2.auth.dto.SignupRequest;
+import com.hear2.auth.dto.TokenResponse;
 import com.hear2.auth.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +32,18 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/reissue")
+    public TokenResponse reissue(@RequestBody ReissueRequest request) {
+        return authService.reissue(request);
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(Authentication authentication) {
+        Long userId = (Long) authentication.getPrincipal();
+        authService.logout(userId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/me")
