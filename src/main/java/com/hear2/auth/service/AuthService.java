@@ -3,6 +3,7 @@ package com.hear2.auth.service;
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
+import com.hear2.auth.dto.ReissueRequest;
 import com.hear2.auth.dto.SignupRequest;
 import com.hear2.auth.dto.TokenResponse;
 import com.hear2.auth.entity.RefreshToken;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
@@ -69,6 +71,29 @@ public class AuthService {
         return MeResponse.from(user);
     }
 
+    @Transactional(readOnly = true)
+    public TokenResponse reissue(ReissueRequest request) {
+        String refreshToken = request.getRefreshToken();
+        if (!StringUtils.hasText(refreshToken)) {
+            throw unauthorized();
+        }
+
+        Long userId = jwtProvider.getRefreshTokenUserId(refreshToken);
+        RefreshToken savedToken = refreshTokenRepository.findByTokenHash(hashToken(refreshToken))
+                .orElseThrow(this::unauthorized);
+
+        if (!savedToken.getUserId().equals(userId) || !LocalDateTime.now().isBefore(savedToken.getExpiresAt())) {
+            throw unauthorized();
+        }
+
+        return TokenResponse.builder()
+                .accessToken(jwtProvider.createAccessToken(userId))
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(jwtProvider.getAccessTokenExpirationSeconds())
+                .build();
+    }
+
     private TokenResponse createToken(User user) {
         String accessToken = jwtProvider.createAccessToken(user.getUserId());
         String refreshToken = jwtProvider.createRefreshToken(user.getUserId());
@@ -103,5 +128,9 @@ public class AuthService {
         } catch (Exception exception) {
             throw new IllegalStateException("failed to hash refresh token", exception);
         }
+    }
+
+    private ResponseStatusException unauthorized() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid refresh token");
     }
 }

@@ -3,7 +3,9 @@ package com.hear2.auth.controller;
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
+import com.hear2.auth.dto.ReissueRequest;
 import com.hear2.auth.dto.SignupRequest;
+import com.hear2.auth.dto.TokenResponse;
 import com.hear2.auth.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,11 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/reissue")
+    public TokenResponse reissue(@RequestBody ReissueRequest request) {
+        return authService.reissue(request);
     }
 
     @GetMapping("/me")

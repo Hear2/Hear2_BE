@@ -69,9 +69,17 @@ public class JwtProvider {
     }
 
     public Long getUserId(String token) {
-        validateToken(token, ACCESS_TOKEN_TYPE);
+        validateToken(token, ACCESS_TOKEN_TYPE, false);
 
-        String payloadJson = new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8);
+        String payloadJson = decodePayload(token);
+        String subject = extractStringClaim(payloadJson, "sub");
+        return Long.valueOf(subject);
+    }
+
+    public Long getRefreshTokenUserId(String token) {
+        validateToken(token, REFRESH_TOKEN_TYPE, true);
+
+        String payloadJson = decodePayload(token);
         String subject = extractStringClaim(payloadJson, "sub");
         return Long.valueOf(subject);
     }
@@ -84,7 +92,11 @@ public class JwtProvider {
         return refreshTokenExpirationSeconds;
     }
 
-    private void validateToken(String token, String expectedTokenType) {
+    private void validateToken(String token, String expectedTokenType, boolean requireTokenType) {
+        if (!StringUtils.hasText(token)) {
+            throw unauthorized();
+        }
+
         String[] parts = token.split("\\.");
         if (parts.length != 3) {
             throw unauthorized();
@@ -95,8 +107,11 @@ public class JwtProvider {
             throw unauthorized();
         }
 
-        String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+        String payloadJson = decodePayload(token);
         String tokenType = extractOptionalStringClaim(payloadJson, "token_type");
+        if (requireTokenType && tokenType == null) {
+            throw unauthorized();
+        }
         if (tokenType != null && !expectedTokenType.equals(tokenType)) {
             throw unauthorized();
         }
@@ -121,6 +136,14 @@ public class JwtProvider {
     private String base64Url(String value) {
         return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String decodePayload(String token) {
+        try {
+            return new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8);
+        } catch (Exception exception) {
+            throw unauthorized();
+        }
     }
 
     private String extractStringClaim(String payloadJson, String claimName) {
