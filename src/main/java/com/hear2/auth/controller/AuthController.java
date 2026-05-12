@@ -3,6 +3,7 @@ package com.hear2.auth.controller;
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
+import com.hear2.auth.dto.PasswordResetConfirmRequest;
 import com.hear2.auth.dto.PasswordResetRequest;
 import com.hear2.auth.dto.PasswordResetResponse;
 import com.hear2.auth.dto.PasswordResetVerifyRequest;
@@ -58,6 +59,11 @@ public class AuthController {
     @PostMapping("/password-reset/verify")
     public PasswordResetVerifyResponse verifyPasswordResetToken(@RequestBody PasswordResetVerifyRequest request) {
         return authService.verifyPasswordResetToken(request);
+    }
+
+    @PostMapping("/password-reset/confirm")
+    public PasswordResetResponse confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request) {
+        return authService.confirmPasswordReset(request);
     }
 
     @GetMapping("/me")

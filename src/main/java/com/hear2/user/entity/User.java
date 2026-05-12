@@ -50,4 +50,8 @@ public class User {
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
     }
+
+    public void changePassword(String password) {
+        this.password = password;
+    }
 }

@@ -3,6 +3,7 @@ package com.hear2.auth.service;
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
+import com.hear2.auth.dto.PasswordResetConfirmRequest;
 import com.hear2.auth.dto.PasswordResetRequest;
 import com.hear2.auth.dto.PasswordResetResponse;
 import com.hear2.auth.dto.PasswordResetVerifyRequest;
@@ -109,6 +110,23 @@ public class AuthService {
         return PasswordResetVerifyResponse.of(valid);
     }
 
+    @Transactional
+    public PasswordResetResponse confirmPasswordReset(PasswordResetConfirmRequest request) {
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(hashToken(request.getToken()))
+                .orElseThrow(this::invalidPasswordResetToken);
+
+        if (!LocalDateTime.now().isBefore(resetToken.getExpiresAt())) {
+            throw invalidPasswordResetToken();
+        }
+
+        User user = userRepository.findById(resetToken.getUserId())
+                .orElseThrow(this::invalidPasswordResetToken);
+        user.changePassword(passwordEncoder.encode(request.getNewPassword()));
+        passwordResetTokenRepository.delete(resetToken);
+
+        return PasswordResetResponse.success();
+    }
+
     @Transactional(readOnly = true)
     public TokenResponse reissue(ReissueRequest request) {
         String refreshToken = request.getRefreshToken();
@@ -190,5 +208,9 @@ public class AuthService {
 
     private ResponseStatusException unauthorized() {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid refresh token");
+    }
+
+    private ResponseStatusException invalidPasswordResetToken() {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid password reset token");
     }
 }
