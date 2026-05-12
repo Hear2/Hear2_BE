@@ -43,15 +43,26 @@ public class User {
     @Column(name = "provider")
     private String provider;
 
+    @Builder.Default
+    @Column(name = "email_verified")
+    private Boolean emailVerified = false;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @PrePersist
     public void prePersist() {
+        if (this.emailVerified == null) {
+            this.emailVerified = false;
+        }
         this.createdAt = LocalDateTime.now();
     }
 
     public void changePassword(String password) {
         this.password = password;
+    }
+
+    public void verifyEmail() {
+        this.emailVerified = true;
     }
 }
