@@ -43,6 +43,9 @@ public class User {
     @Column(name = "provider")
     private String provider;
 
+    @Column(name = "provider_id")
+    private String providerId;
+
     @Builder.Default
     @Column(name = "email_verified")
     private Boolean emailVerified = false;
@@ -64,5 +67,9 @@ public class User {
 
     public void verifyEmail() {
         this.emailVerified = true;
+    }
+
+    public void linkProviderId(String providerId) {
+        this.providerId = providerId;
     }
 }

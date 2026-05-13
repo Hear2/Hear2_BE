@@ -5,6 +5,7 @@ import com.hear2.auth.dto.EmailVerificationRequest;
 import com.hear2.auth.dto.EmailVerificationResendRequest;
 import com.hear2.auth.dto.EmailVerificationResponse;
 import com.hear2.auth.dto.GoogleOAuthLoginRequest;
+import com.hear2.auth.dto.KakaoOAuthLoginRequest;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
 import com.hear2.auth.dto.PasswordResetConfirmRequest;
@@ -23,6 +24,8 @@ import com.hear2.auth.repository.PasswordResetTokenRepository;
 import com.hear2.auth.repository.RefreshTokenRepository;
 import com.hear2.auth.oauth.GoogleOAuthClient;
 import com.hear2.auth.oauth.GoogleOAuthUserInfo;
+import com.hear2.auth.oauth.KakaoOAuthClient;
+import com.hear2.auth.oauth.KakaoOAuthUserInfo;
 import com.hear2.global.mail.EmailSendException;
 import com.hear2.global.mail.EmailService;
 import com.hear2.global.security.JwtProvider;
@@ -49,6 +52,7 @@ public class AuthService {
     private static final int PASSWORD_RESET_TOKEN_BYTES = 32;
     private static final long PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = 30;
     private static final long EMAIL_VERIFICATION_TOKEN_EXPIRATION_MINUTES = 30;
+    private static final String KAKAO_PROVIDER = "KAKAO";
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -58,6 +62,7 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final EmailService emailService;
     private final GoogleOAuthClient googleOAuthClient;
+    private final KakaoOAuthClient kakaoOAuthClient;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -107,6 +112,23 @@ public class AuthService {
 
         User user = userRepository.findByEmail(googleUser.email())
                 .orElseGet(() -> userRepository.save(createGoogleUser(googleUser)));
+
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            user.verifyEmail();
+        }
+
+        return AuthResponse.from(user, createToken(user));
+    }
+
+    @Transactional
+    public AuthResponse loginWithKakao(KakaoOAuthLoginRequest request) {
+        KakaoOAuthUserInfo kakaoUser = kakaoOAuthClient.getUserInfo(request.getAccessToken());
+
+        if (!kakaoUser.emailVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "kakao email is not verified");
+        }
+
+        User user = findOrCreateKakaoUser(kakaoUser);
 
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
             user.verifyEmail();
@@ -256,6 +278,59 @@ public class AuthService {
         String email = googleUser.email();
         int atIndex = email.indexOf('@');
         return atIndex > 0 ? email.substring(0, atIndex) : email;
+    }
+
+    private User findOrCreateKakaoUser(KakaoOAuthUserInfo kakaoUser) {
+        return userRepository.findByProviderAndProviderId(KAKAO_PROVIDER, kakaoUser.providerId())
+                .orElseGet(() -> findExistingKakaoUserByEmail(kakaoUser)
+                        .orElseGet(() -> userRepository.save(createKakaoUser(kakaoUser))));
+    }
+
+    private java.util.Optional<User> findExistingKakaoUserByEmail(KakaoOAuthUserInfo kakaoUser) {
+        if (!StringUtils.hasText(kakaoUser.email())) {
+            return java.util.Optional.empty();
+        }
+
+        return userRepository.findByEmail(kakaoUser.email())
+                .map(user -> {
+                    if (!StringUtils.hasText(user.getProviderId())) {
+                        user.linkProviderId(kakaoUser.providerId());
+                    }
+                    return user;
+                });
+    }
+
+    private User createKakaoUser(KakaoOAuthUserInfo kakaoUser) {
+        return User.builder()
+                .email(resolveKakaoEmail(kakaoUser))
+                .password(passwordEncoder.encode(createOpaqueToken()))
+                .nickname(resolveKakaoNickname(kakaoUser))
+                .profileImage(StringUtils.hasText(kakaoUser.profileImage()) ? kakaoUser.profileImage() : null)
+                .provider(KAKAO_PROVIDER)
+                .providerId(kakaoUser.providerId())
+                .emailVerified(true)
+                .build();
+    }
+
+    private String resolveKakaoNickname(KakaoOAuthUserInfo kakaoUser) {
+        if (StringUtils.hasText(kakaoUser.nickname())) {
+            return kakaoUser.nickname();
+        }
+
+        if (!StringUtils.hasText(kakaoUser.email())) {
+            return kakaoUser.providerId();
+        }
+
+        String email = kakaoUser.email();
+        int atIndex = email.indexOf('@');
+        return atIndex > 0 ? email.substring(0, atIndex) : email;
+    }
+
+    private String resolveKakaoEmail(KakaoOAuthUserInfo kakaoUser) {
+        if (StringUtils.hasText(kakaoUser.email())) {
+            return kakaoUser.email();
+        }
+        return "kakao_" + kakaoUser.providerId() + "@kakao.local";
     }
 
     private void saveRefreshToken(Long userId, String refreshToken) {
