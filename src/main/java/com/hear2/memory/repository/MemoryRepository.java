@@ -13,5 +13,17 @@ public interface MemoryRepository extends JpaRepository<Memory, Long> {
 
     List<Memory> findByCoupleIdAndMemoryDateOrderByCreatedAtDesc(Long coupleId, LocalDate memoryDate);
 
+    long countByCoupleIdAndMemoryDateGreaterThanEqualAndMemoryDateLessThanEqual(
+            Long coupleId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
+    List<Memory> findByCoupleIdAndMemoryDateGreaterThanEqualAndMemoryDateLessThanEqualOrderByMemoryDateAscCreatedAtDesc(
+            Long coupleId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
     Optional<Memory> findByIdAndCoupleId(Long id, Long coupleId);
 }

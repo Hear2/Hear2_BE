@@ -64,6 +64,54 @@ public class FcmNotificationService {
                 && emotion.getRiskLevel().isRisk();
     }
 
+    public void sendReportShare(
+            Long receiverId,
+            Long coupleId,
+            String title,
+            String body,
+            String shareCode,
+            String shareUrl
+    ) {
+        if (receiverId == null) {
+            return;
+        }
+
+        if (!fcmProperties.isEnabled()) {
+            log.debug("FCM is disabled. report share notification skipped. receiverId={}", receiverId);
+            return;
+        }
+
+        FirebaseMessaging firebaseMessaging = firebaseMessagingProvider.getIfAvailable();
+        if (firebaseMessaging == null) {
+            log.warn("FirebaseMessaging bean is not available. report share notification skipped. receiverId={}", receiverId);
+            return;
+        }
+
+        List<FcmToken> tokens = fcmTokenRepository.findByUserIdAndActiveTrue(receiverId);
+        if (tokens.isEmpty()) {
+            log.debug("Receiver has no active FCM token. receiverId={}, shareCode={}", receiverId, shareCode);
+            return;
+        }
+
+        for (FcmToken fcmToken : tokens) {
+            try {
+                Message fcmMessage = Message.builder()
+                        .setToken(fcmToken.getToken())
+                        .setNotification(Notification.builder()
+                                .setTitle(title)
+                                .setBody(body)
+                                .build())
+                        .putAllData(reportShareData(receiverId, coupleId, shareCode, shareUrl))
+                        .build();
+
+                firebaseMessaging.send(fcmMessage);
+            } catch (FirebaseMessagingException ex) {
+                log.warn("FCM report share send failed. tokenId={}, receiverId={}, shareCode={}",
+                        fcmToken.getId(), receiverId, shareCode, ex);
+            }
+        }
+    }
+
     private void sendToToken(
             FirebaseMessaging firebaseMessaging,
             FcmToken fcmToken,
@@ -118,6 +166,21 @@ public class FcmNotificationService {
             data.put("detectedRiskKeywords", String.join(",", emotion.getDetectedRiskKeywords()));
         }
 
+        return data;
+    }
+
+    private Map<String, String> reportShareData(
+            Long receiverId,
+            Long coupleId,
+            String shareCode,
+            String shareUrl
+    ) {
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "REPORT_SHARE");
+        data.put("receiverId", stringValue(receiverId));
+        data.put("coupleId", stringValue(coupleId));
+        data.put("shareCode", stringValue(shareCode));
+        data.put("shareUrl", stringValue(shareUrl));
         return data;
     }
 

@@ -50,7 +50,9 @@ public class ChatMessage {
 
     @PrePersist
     public void prePersist() {
-        this.createdAt = LocalDateTime.now();
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
     }
 
     public void markAsRead(LocalDateTime readAt) {

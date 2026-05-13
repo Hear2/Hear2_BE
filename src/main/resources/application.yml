@@ -71,6 +71,11 @@ cloudflare:
 openai:
   api-key: ${OPENAI_API_KEY:}
   model: ${OPENAI_MODEL:gpt-4o-mini}
+  report:
+    enabled: ${OPENAI_REPORT_ENABLED:true}
+    model: ${OPENAI_REPORT_MODEL:${OPENAI_MODEL:gpt-4o-mini}}
+    connect-timeout-ms: ${OPENAI_REPORT_CONNECT_TIMEOUT_MS:1500}
+    read-timeout-ms: ${OPENAI_REPORT_READ_TIMEOUT_MS:5000}
 
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
