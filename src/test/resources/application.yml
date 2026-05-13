@@ -52,3 +52,7 @@ kakao:
   rest-api-key:
   local:
     radius-meters: 1000
+
+google:
+  oauth:
+    client-id: test-google-client-id

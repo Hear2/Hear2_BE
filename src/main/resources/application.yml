@@ -86,5 +86,9 @@ kakao:
   local:
     radius-meters: ${KAKAO_LOCAL_RADIUS_METERS:1000}
 
+google:
+  oauth:
+    client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+
 server:
   port: 8080

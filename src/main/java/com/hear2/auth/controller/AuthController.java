@@ -4,6 +4,8 @@ import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.EmailVerificationRequest;
 import com.hear2.auth.dto.EmailVerificationResendRequest;
 import com.hear2.auth.dto.EmailVerificationResponse;
+import com.hear2.auth.dto.GoogleOAuthLoginRequest;
+import com.hear2.auth.dto.KakaoOAuthLoginRequest;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
 import com.hear2.auth.dto.PasswordResetConfirmRequest;
@@ -40,6 +42,16 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/oauth/google")
+    public AuthResponse loginWithGoogle(@Valid @RequestBody GoogleOAuthLoginRequest request) {
+        return authService.loginWithGoogle(request);
+    }
+
+    @PostMapping("/oauth/kakao")
+    public AuthResponse loginWithKakao(@Valid @RequestBody KakaoOAuthLoginRequest request) {
+        return authService.loginWithKakao(request);
     }
 
     @PostMapping("/reissue")
