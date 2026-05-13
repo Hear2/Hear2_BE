@@ -87,6 +87,34 @@ class WebSocketJwtChannelInterceptorTest {
                 .hasMessageContaining("login is required");
     }
 
+    @Test
+    void allowsLocationSubscriptionForUsersCouple() {
+        when(chatParticipantResolver.resolve(10L))
+                .thenReturn(new ChatParticipantResolver.ChatRoomContext(1L, 10L, 11L));
+        Message<byte[]> message = message(
+                StompCommand.SUBSCRIBE,
+                "/sub/locations/couples/1",
+                new UsernamePasswordAuthenticationToken(10L, null, List.of())
+        );
+
+        interceptor.preSend(message, channel);
+    }
+
+    @Test
+    void rejectsLocationSubscriptionForAnotherCouple() {
+        when(chatParticipantResolver.resolve(10L))
+                .thenReturn(new ChatParticipantResolver.ChatRoomContext(1L, 10L, 11L));
+        Message<byte[]> message = message(
+                StompCommand.SUBSCRIBE,
+                "/sub/locations/couples/2",
+                new UsernamePasswordAuthenticationToken(10L, null, List.of())
+        );
+
+        assertThatThrownBy(() -> interceptor.preSend(message, channel))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("location channel access denied");
+    }
+
     private Message<byte[]> message(StompCommand command, String destination, UsernamePasswordAuthenticationToken user) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
         if (destination != null) {
