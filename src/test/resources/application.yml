@@ -45,6 +45,8 @@ app:
 openai:
   api-key:
   model: gpt-4o-mini
+  report:
+    enabled: false
 
 kakao:
   rest-api-key:

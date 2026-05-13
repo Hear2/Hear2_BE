@@ -54,6 +54,8 @@ public class EmotionAnalysis {
 
     @PrePersist
     public void prePersist() {
-        this.analyzedAt = LocalDateTime.now();
+        if (this.analyzedAt == null) {
+            this.analyzedAt = LocalDateTime.now();
+        }
     }
 }
