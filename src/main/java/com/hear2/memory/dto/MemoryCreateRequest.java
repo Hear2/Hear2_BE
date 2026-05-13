@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @NoArgsConstructor
@@ -20,7 +21,8 @@ import java.time.LocalDateTime;
                   "takenAt": "2026-05-11T10:30:00",
                   "latitude": 37.2221,
                   "longitude": 127.1875,
-                  "locationName": "명지대학교 자연캠퍼스"
+                  "locationName": "명지대학교 자연캠퍼스",
+                  "userTags": ["우리둘이", "특별한날"]
                 }
                 """
 )
@@ -46,4 +48,8 @@ public class MemoryCreateRequest {
     @Schema(description = "사용자가 직접 지정한 장소명. 생략하면 좌표 기준 카카오 로컬 API로 장소/주소를 계산합니다.", example = "명지대학교 자연캠퍼스")
     @Size(max = 255)
     private String locationName;
+
+    @Schema(description = "사용자가 직접 입력한 태그. #은 생략해도 됩니다.", example = "[\"우리둘이\", \"특별한날\"]")
+    @Size(max = 20)
+    private List<@Size(max = 80) String> userTags;
 }

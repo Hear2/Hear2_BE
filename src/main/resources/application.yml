@@ -37,6 +37,10 @@ app:
   memory-storage:
     type: ${MEMORY_STORAGE_TYPE:local}
     upload-dir: ${MEMORY_UPLOAD_DIR:memory-uploads}
+  media-storage:
+    type: ${MEDIA_STORAGE_TYPE:${MEMORY_STORAGE_TYPE:local}}
+    presigned-upload-expiration-minutes: ${MEDIA_PRESIGNED_UPLOAD_EXPIRATION_MINUTES:10}
+    presigned-read-expiration-minutes: ${MEDIA_PRESIGNED_READ_EXPIRATION_MINUTES:10}
   location-sharing:
     name-refresh-distance-meters: ${LOCATION_NAME_REFRESH_DISTANCE_METERS:50}
   emotion:

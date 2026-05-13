@@ -2,6 +2,7 @@ package com.hear2.memory.dto;
 
 import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiAnalysisStatus;
+import com.hear2.memory.entity.MemoryTagSource;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -26,6 +27,8 @@ public class MemoryResponse {
     private MemoryAiAnalysisStatus aiAnalysisStatus;
     private MemoryPhotoMetadataResponse metadata;
     private List<MemoryAiTagResponse> tags;
+    private List<String> aiTags;
+    private List<String> userTags;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -46,18 +49,36 @@ public class MemoryResponse {
                 .tags(memory.getAiTags().stream()
                         .map(MemoryAiTagResponse::from)
                         .toList())
+                .aiTags(memory.getAiTags().stream()
+                        .filter(tag -> tag.getSource() == MemoryTagSource.AI)
+                        .map(tag -> "#" + tag.getTagName())
+                        .toList())
+                .userTags(memory.getAiTags().stream()
+                        .filter(tag -> tag.getSource() == MemoryTagSource.USER)
+                        .map(tag -> "#" + tag.getTagName())
+                        .toList())
                 .createdAt(memory.getCreatedAt())
                 .updatedAt(memory.getUpdatedAt())
                 .build();
     }
 
-    private static String resolvePhotoUrl(Memory memory) {
+    public static String resolvePhotoUrl(Memory memory) {
         if (memory.getId() == null || memory.getStoredPhotoPath() == null) {
             return null;
+        }
+
+        if (isExternalReference(memory.getStoredPhotoPath())) {
+            return memory.getStoredPhotoPath();
         }
 
         return "/api/v1/memories/items/"
                 + memory.getId()
                 + "/photo";
+    }
+
+    private static boolean isExternalReference(String storedPhotoPath) {
+        return storedPhotoPath.startsWith("http://")
+                || storedPhotoPath.startsWith("https://")
+                || storedPhotoPath.startsWith("s3://");
     }
 }

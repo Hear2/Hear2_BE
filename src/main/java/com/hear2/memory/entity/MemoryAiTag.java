@@ -46,6 +46,10 @@ public class MemoryAiTag {
         return new MemoryAiTag(tagName, confidence, MemoryTagSource.AI);
     }
 
+    public static MemoryAiTag user(String tagName) {
+        return new MemoryAiTag(tagName, null, MemoryTagSource.USER);
+    }
+
     public void assignMemory(Memory memory) {
         this.memory = memory;
     }

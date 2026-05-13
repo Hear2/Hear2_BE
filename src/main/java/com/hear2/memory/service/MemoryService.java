@@ -3,8 +3,16 @@ package com.hear2.memory.service;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.memory.dto.MemoryCreateRequest;
+import com.hear2.memory.dto.MemoryCalendarDayResponse;
+import com.hear2.memory.dto.MemoryCalendarResponse;
+import com.hear2.memory.dto.MemoryImageTagRequest;
+import com.hear2.memory.dto.MemoryImageTagResponse;
+import com.hear2.memory.dto.MemoryQuickCreateRequest;
+import com.hear2.memory.dto.MemoryQuickResponse;
+import com.hear2.memory.dto.MemoryQuickUpdateRequest;
 import com.hear2.memory.dto.MemoryResponse;
 import com.hear2.memory.dto.MemoryUpdateRequest;
+import com.hear2.memory.dto.MemoryYearAgoResponse;
 import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiTag;
 import com.hear2.memory.entity.MemoryPhotoMetadata;
@@ -18,9 +26,15 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -68,8 +82,44 @@ public class MemoryService {
         ));
 
         applyAiAnalysis(memory, sanitizedPhoto, request);
+        applyUserTags(memory, request.getUserTags());
 
         return MemoryResponse.from(memoryRepository.save(memory));
+    }
+
+    @Transactional
+    public MemoryQuickResponse createQuickMemory(MemoryQuickCreateRequest request, Long currentUserId) {
+        validateQuickCreateRequest(request);
+        Long coupleId = resolveCoupleId(currentUserId);
+
+        LocalDateTime capturedAt = toLocalDateTime(request.getCapturedAt());
+        ResolvedMemoryLocation resolvedLocation = resolveLocation(null, request.getLat(), request.getLng());
+        MemoryPhotoStorageResult referencedPhoto = memoryPhotoStorageService.referenceExternal(resolveStoredPhotoReference(request));
+
+        Memory memory = Memory.builder()
+                .coupleId(coupleId)
+                .uploaderId(currentUserId)
+                .storedPhotoPath(referencedPhoto.storedPhotoPath())
+                .originalFileName(referencedPhoto.originalFileName())
+                .photoContentType(referencedPhoto.contentType())
+                .photoSize(referencedPhoto.size())
+                .memo(null)
+                .memoryDate(resolveMemoryDate(capturedAt))
+                .build();
+
+        memory.attachPhotoMetadata(MemoryPhotoMetadata.create(
+                capturedAt,
+                request.getLat(),
+                request.getLng(),
+                resolvedLocation.locationName(),
+                resolvedLocation.placeName(),
+                resolvedLocation.addressName()
+        ));
+
+        applyAiAnalysis(memory, request, resolvedLocation);
+        applyUserTags(memory, request.getUserTags());
+
+        return MemoryQuickResponse.from(memoryRepository.save(memory));
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +146,79 @@ public class MemoryService {
     }
 
     @Transactional(readOnly = true)
+    public MemoryCalendarResponse getCalendar(int year, int month, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
+        YearMonth yearMonth = validateYearMonth(year, month);
+        LocalDate startDate = yearMonth.atDay(1);
+        LocalDate endDate = yearMonth.atEndOfMonth();
+
+        Map<LocalDate, List<Memory>> memoriesByDate = memoryRepository
+                .findByCoupleIdAndMemoryDateGreaterThanEqualAndMemoryDateLessThanEqualOrderByMemoryDateAscCreatedAtDesc(
+                        coupleId,
+                        startDate,
+                        endDate
+                )
+                .stream()
+                .collect(Collectors.groupingBy(Memory::getMemoryDate));
+
+        List<MemoryCalendarDayResponse> days = memoriesByDate.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> MemoryCalendarDayResponse.builder()
+                        .date(entry.getKey())
+                        .thumbnails(entry.getValue().stream()
+                                .limit(3)
+                                .map(MemoryResponse::resolvePhotoUrl)
+                                .toList())
+                        .memoryCount(entry.getValue().size())
+                        .dominantEmoji("😊")
+                        .build())
+                .toList();
+
+        return MemoryCalendarResponse.builder()
+                .year(year)
+                .month(month)
+                .days(days)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public MemoryYearAgoResponse getYearAgo(Long currentUserId) {
+        LocalDate date = LocalDate.now().minusYears(1);
+        List<MemoryResponse> items = getMemoriesByDate(date, currentUserId);
+
+        return MemoryYearAgoResponse.builder()
+                .exists(!items.isEmpty())
+                .items(items)
+                .summary(buildYearAgoSummary(items))
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public MemoryImageTagResponse analyzeImageTags(MemoryImageTagRequest request, Long currentUserId) {
+        validateCurrentUserId(currentUserId);
+        if (request == null || !StringUtils.hasText(request.getImageUrl())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "imageUrl is required");
+        }
+
+        MemoryAiAnalysisResult analysisResult = memoryAiAnalysisService.analyzeImageUrl(
+                request.getImageUrl(),
+                null,
+                null,
+                null
+        );
+        List<MemoryAiTag> aiTags = toAiTags(analysisResult);
+        List<String> tags = aiTags.stream()
+                .map(tag -> "#" + tag.getTagName())
+                .toList();
+
+        return MemoryImageTagResponse.builder()
+                .tags(tags)
+                .scene(null)
+                .confidence(resolveAverageConfidence(aiTags))
+                .build();
+    }
+
+    @Transactional(readOnly = true)
     public MemoryResponse getMemory(Long memoryId, Long currentUserId) {
         Long coupleId = resolveCoupleId(currentUserId);
         return MemoryResponse.from(findMemory(coupleId, memoryId));
@@ -118,8 +241,27 @@ public class MemoryService {
         Long coupleId = resolveCoupleId(currentUserId);
         Memory memory = findMemory(coupleId, memoryId);
         memory.updateMemo(normalizeMemo(request.getMemo()));
+        if (request.getUserTags() != null) {
+            applyUserTags(memory, request.getUserTags());
+        }
 
         return MemoryResponse.from(memory);
+    }
+
+    @Transactional
+    public MemoryQuickResponse updateQuickMemory(Long memoryId, MemoryQuickUpdateRequest request, Long currentUserId) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory update request is required");
+        }
+
+        Long coupleId = resolveCoupleId(currentUserId);
+        Memory memory = findMemory(coupleId, memoryId);
+        memory.updateMemo(normalizeMemo(request.getNote()));
+        if (request.getUserTags() != null) {
+            applyUserTags(memory, request.getUserTags());
+        }
+
+        return MemoryQuickResponse.from(memory);
     }
 
     @Transactional
@@ -142,6 +284,26 @@ public class MemoryService {
         }
     }
 
+    private void applyAiAnalysis(
+            Memory memory,
+            MemoryQuickCreateRequest request,
+            ResolvedMemoryLocation resolvedLocation
+    ) {
+        MemoryAiAnalysisResult analysisResult = memoryAiAnalysisService.analyzeImageUrl(
+                resolveAnalysisImageUrl(request),
+                null,
+                resolvedLocation.locationName(),
+                toLocalDateTime(request.getCapturedAt())
+        );
+        memory.replaceAiTags(toAiTags(analysisResult));
+
+        if (analysisResult.isCompleted()) {
+            memory.markAiAnalyzed();
+        } else if (analysisResult.isFailed()) {
+            memory.markAiAnalysisFailed();
+        }
+    }
+
     private List<MemoryAiTag> toAiTags(MemoryAiAnalysisResult analysisResult) {
         if (analysisResult == null || analysisResult.getTags() == null) {
             return List.of();
@@ -151,6 +313,26 @@ public class MemoryService {
                 .filter(tag -> tag != null && StringUtils.hasText(tag.tagName()))
                 .map(tag -> MemoryAiTag.ai(tag.tagName().trim(), tag.confidence()))
                 .toList();
+    }
+
+    private BigDecimal resolveAverageConfidence(List<MemoryAiTag> tags) {
+        List<BigDecimal> confidences = tags.stream()
+                .map(MemoryAiTag::getConfidence)
+                .filter(confidence -> confidence != null)
+                .toList();
+        if (confidences.isEmpty()) {
+            return BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal sum = confidences.stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(BigDecimal.valueOf(confidences.size()), 4, RoundingMode.HALF_UP);
+    }
+
+    private void applyUserTags(Memory memory, List<String> userTags) {
+        memory.replaceUserTags(normalizeTags(userTags).stream()
+                .map(MemoryAiTag::user)
+                .toList());
     }
 
     private Memory findMemory(Long coupleId, Long memoryId) {
@@ -166,6 +348,15 @@ public class MemoryService {
     private void validateCreateRequest(MemoryCreateRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory create request is required");
+        }
+    }
+
+    private void validateQuickCreateRequest(MemoryQuickCreateRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory quick create request is required");
+        }
+        if (!StringUtils.hasText(request.getObjectKey()) && !StringUtils.hasText(request.getImageUrl())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "objectKey or imageUrl is required");
         }
     }
 
@@ -236,7 +427,7 @@ public class MemoryService {
             BigDecimal latitude,
             BigDecimal longitude
     ) {
-        String requestedLocationName = normalizeLocationName(request.getLocationName());
+        String requestedLocationName = request == null ? null : normalizeLocationName(request.getLocationName());
         KakaoLocationNames kakaoLocationNames = kakaoLocalService.resolveLocationNames(latitude, longitude);
         String addressName = kakaoLocationNames == null ? null : kakaoLocationNames.addressName();
 
@@ -255,12 +446,72 @@ public class MemoryService {
         );
     }
 
+    private YearMonth validateYearMonth(int year, int month) {
+        try {
+            return YearMonth.of(year, month);
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "year and month must be valid");
+        }
+    }
+
+    private LocalDateTime toLocalDateTime(OffsetDateTime capturedAt) {
+        if (capturedAt == null) {
+            return null;
+        }
+
+        return LocalDateTime.ofInstant(capturedAt.toInstant(), ZoneOffset.UTC);
+    }
+
     private String normalizeMemo(String memo) {
         return StringUtils.hasText(memo) ? memo.trim() : null;
     }
 
+    private String resolveStoredPhotoReference(MemoryQuickCreateRequest request) {
+        if (StringUtils.hasText(request.getObjectKey())) {
+            return request.getObjectKey().trim();
+        }
+
+        return request.getImageUrl().trim();
+    }
+
+    private String resolveAnalysisImageUrl(MemoryQuickCreateRequest request) {
+        if (StringUtils.hasText(request.getImageUrl())) {
+            return request.getImageUrl().trim();
+        }
+
+        return memoryPhotoStorageService.createReadUrl(request.getObjectKey());
+    }
+
     private String normalizeLocationName(String locationName) {
         return StringUtils.hasText(locationName) ? locationName.trim() : null;
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null) {
+            return List.of();
+        }
+
+        return tags.stream()
+                .filter(StringUtils::hasText)
+                .map(tag -> tag.replace("#", "").trim())
+                .filter(StringUtils::hasText)
+                .distinct()
+                .limit(20)
+                .toList();
+    }
+
+    private String buildYearAgoSummary(List<MemoryResponse> items) {
+        if (items.isEmpty()) {
+            return null;
+        }
+
+        MemoryResponse first = items.get(0);
+        String locationName = first.getMetadata() == null ? null : first.getMetadata().getLocationName();
+        if (StringUtils.hasText(locationName)) {
+            return locationName + "에서의 추억";
+        }
+
+        return "1년 전 오늘의 추억 " + items.size() + "개";
     }
 
     private record ResolvedMemoryLocation(
