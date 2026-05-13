@@ -1,6 +1,8 @@
 package com.hear2.auth.service;
 
 import com.hear2.auth.dto.AuthResponse;
+import com.hear2.auth.dto.EmailVerificationRequest;
+import com.hear2.auth.dto.EmailVerificationResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
 import com.hear2.auth.dto.PasswordResetConfirmRequest;
@@ -11,8 +13,10 @@ import com.hear2.auth.dto.PasswordResetVerifyResponse;
 import com.hear2.auth.dto.ReissueRequest;
 import com.hear2.auth.dto.SignupRequest;
 import com.hear2.auth.dto.TokenResponse;
+import com.hear2.auth.entity.EmailVerificationToken;
 import com.hear2.auth.entity.PasswordResetToken;
 import com.hear2.auth.entity.RefreshToken;
+import com.hear2.auth.repository.EmailVerificationTokenRepository;
 import com.hear2.auth.repository.PasswordResetTokenRepository;
 import com.hear2.auth.repository.RefreshTokenRepository;
 import com.hear2.global.mail.EmailSendException;
@@ -40,10 +44,12 @@ public class AuthService {
 
     private static final int PASSWORD_RESET_TOKEN_BYTES = 32;
     private static final long PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = 30;
+    private static final long EMAIL_VERIFICATION_TOKEN_EXPIRATION_MINUTES = 30;
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final EmailService emailService;
@@ -64,6 +70,9 @@ public class AuthService {
                 .build();
 
         User savedUser = userRepository.save(user);
+        String verificationToken = saveEmailVerificationToken(savedUser);
+        sendEmailVerificationEmail(savedUser.getEmail(), verificationToken);
+
         return AuthResponse.from(savedUser, createToken(savedUser));
     }
 
@@ -133,6 +142,23 @@ public class AuthService {
         return PasswordResetResponse.success();
     }
 
+    @Transactional
+    public EmailVerificationResponse verifyEmail(EmailVerificationRequest request) {
+        EmailVerificationToken verificationToken = emailVerificationTokenRepository.findByTokenHash(hashToken(request.getToken()))
+                .orElseThrow(this::invalidEmailVerificationToken);
+
+        if (!LocalDateTime.now().isBefore(verificationToken.getExpiresAt())) {
+            throw invalidEmailVerificationToken();
+        }
+
+        User user = userRepository.findById(verificationToken.getUserId())
+                .orElseThrow(this::invalidEmailVerificationToken);
+        user.verifyEmail();
+        emailVerificationTokenRepository.delete(verificationToken);
+
+        return EmailVerificationResponse.success();
+    }
+
     @Transactional(readOnly = true)
     public TokenResponse reissue(ReissueRequest request) {
         String refreshToken = request.getRefreshToken();
@@ -197,11 +223,34 @@ public class AuthService {
         return resetToken;
     }
 
+    private String saveEmailVerificationToken(User user) {
+        String verificationToken = createOpaqueToken();
+        String tokenHash = hashToken(verificationToken);
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(EMAIL_VERIFICATION_TOKEN_EXPIRATION_MINUTES);
+
+        EmailVerificationToken savedToken = emailVerificationTokenRepository.findByUserId(user.getUserId())
+                .orElseGet(() -> EmailVerificationToken.builder()
+                        .userId(user.getUserId())
+                        .build());
+        savedToken.rotate(tokenHash, expiresAt);
+
+        emailVerificationTokenRepository.save(savedToken);
+        return verificationToken;
+    }
+
     private void sendPasswordResetEmail(String email, String resetToken) {
         try {
             emailService.sendPasswordResetEmail(email, resetToken);
         } catch (EmailSendException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "failed to send password reset email", exception);
+        }
+    }
+
+    private void sendEmailVerificationEmail(String email, String verificationToken) {
+        try {
+            emailService.sendEmailVerificationEmail(email, verificationToken);
+        } catch (EmailSendException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "failed to send email verification email", exception);
         }
     }
 
@@ -227,5 +276,9 @@ public class AuthService {
 
     private ResponseStatusException invalidPasswordResetToken() {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid password reset token");
+    }
+
+    private ResponseStatusException invalidEmailVerificationToken() {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid email verification token");
     }
 }
