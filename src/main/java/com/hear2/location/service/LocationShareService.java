@@ -1,5 +1,7 @@
 package com.hear2.location.service;
 
+import com.hear2.couple.entity.CoupleMember;
+import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.location.dto.LocationResponse;
 import com.hear2.location.dto.LocationShareStatusRequest;
 import com.hear2.location.dto.LocationShareStatusResponse;
@@ -17,35 +19,41 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class LocationShareService {
 
+    private static final Duration STALE_THRESHOLD = Duration.ofMinutes(5);
+
     private final LocationShareSettingRepository locationShareSettingRepository;
     private final UserLocationRepository userLocationRepository;
     private final LocationNameResolver locationNameResolver;
+    private final CoupleMemberRepository coupleMemberRepository;
 
     @Value("${app.location-sharing.name-refresh-distance-meters:50}")
     private double nameRefreshDistanceMeters;
 
     @Transactional
-    public LocationShareStatusResponse updateShareStatus(LocationShareStatusRequest request) {
+    public LocationShareStatusResponse updateShareStatus(Long currentUserId, LocationShareStatusRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "share status request is required");
         }
 
-        validateRequiredIds(request.getCoupleId(), request.getUserId());
+        CoupleContext context = resolveCoupleContext(currentUserId);
         if (request.getEnabled() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "enabled is required");
         }
 
         LocationShareSetting setting = locationShareSettingRepository
-                .findByCoupleIdAndUserId(request.getCoupleId(), request.getUserId())
+                .findByCoupleIdAndUserId(context.coupleId(), context.userId())
                 .orElseGet(() -> LocationShareSetting.create(
-                        request.getCoupleId(),
-                        request.getUserId(),
+                        context.coupleId(),
+                        context.userId(),
                         request.getEnabled()
                 ));
 
@@ -63,64 +71,67 @@ public class LocationShareService {
     }
 
     @Transactional(readOnly = true)
-    public LocationShareStatusResponse getShareStatus(Long coupleId, Long userId) {
-        validateRequiredIds(coupleId, userId);
+    public LocationShareStatusResponse getShareStatus(Long currentUserId) {
+        CoupleContext context = resolveCoupleContext(currentUserId);
 
-        return locationShareSettingRepository.findByCoupleIdAndUserId(coupleId, userId)
+        return locationShareSettingRepository.findByCoupleIdAndUserId(context.coupleId(), context.userId())
                 .map(LocationShareStatusResponse::from)
-                .orElseGet(() -> LocationShareStatusResponse.disabled(coupleId, userId));
+                .orElseGet(() -> LocationShareStatusResponse.disabled(context.coupleId(), context.userId()));
     }
 
     @Transactional
-    public LocationResponse updateCurrentLocation(LocationUpdateRequest request) {
+    public LocationResponse updateCurrentLocation(Long currentUserId, LocationUpdateRequest request) {
         validateLocationRequest(request);
-        requireSharingEnabled(request.getCoupleId(), request.getUserId());
+        CoupleContext context = resolveCoupleContext(currentUserId);
+        requireSharingEnabled(context.coupleId(), context.userId());
 
         Optional<UserLocation> savedLocation = userLocationRepository
-                .findByCoupleIdAndUserId(request.getCoupleId(), request.getUserId());
+                .findByCoupleIdAndUserId(context.coupleId(), context.userId());
         ResolvedLocationNames locationNames = resolveLocationNames(request, savedLocation.orElse(null));
 
         UserLocation location = savedLocation
                 .orElseGet(() -> UserLocation.create(
-                        request.getCoupleId(),
-                        request.getUserId(),
-                        request.getLatitude(),
-                        request.getLongitude(),
-                        request.getAccuracyMeters(),
+                        context.coupleId(),
+                        context.userId(),
+                        request.getLat(),
+                        request.getLng(),
+                        request.getAccuracy(),
                         locationNames.placeName(),
                         locationNames.addressName(),
-                        request.getRecordedAt()
+                        toRecordedAt(request)
                 ));
 
         location.update(
-                request.getLatitude(),
-                request.getLongitude(),
-                request.getAccuracyMeters(),
+                request.getLat(),
+                request.getLng(),
+                request.getAccuracy(),
                 locationNames.placeName(),
                 locationNames.addressName(),
-                request.getRecordedAt()
+                toRecordedAt(request)
         );
 
-        return LocationResponse.from(userLocationRepository.save(location));
+        return toLocationResponse(userLocationRepository.save(location));
     }
 
     @Transactional(readOnly = true)
-    public PartnerLocationResponse getPartnerLocation(Long coupleId, Long requesterId) {
-        validateRequiredIds(coupleId, requesterId);
+    public PartnerLocationResponse getCoupleLocation(Long currentUserId) {
+        CoupleContext context = resolveCoupleContext(currentUserId);
+        requireSharingEnabled(context.coupleId(), context.userId());
 
-        Optional<UserLocation> sharedPartnerLocation = userLocationRepository
-                .findByCoupleIdAndUserIdNotOrderByUpdatedAtDesc(coupleId, requesterId)
-                .stream()
-                .filter(location -> isSharingEnabled(coupleId, location.getUserId()))
-                .findFirst();
+        LocationResponse me = userLocationRepository
+                .findByCoupleIdAndUserId(context.coupleId(), context.userId())
+                .map(this::toLocationResponse)
+                .orElse(null);
 
-        return sharedPartnerLocation
-                .map(location -> PartnerLocationResponse.shared(
-                        coupleId,
-                        requesterId,
-                        LocationResponse.from(location)
-                ))
-                .orElseGet(() -> PartnerLocationResponse.hidden(coupleId, requesterId));
+        LocationResponse partner = null;
+        if (isSharingEnabled(context.coupleId(), context.partnerId())) {
+            partner = userLocationRepository
+                    .findByCoupleIdAndUserId(context.coupleId(), context.partnerId())
+                    .map(this::toLocationResponse)
+                    .orElse(null);
+        }
+
+        return PartnerLocationResponse.of(me, partner);
     }
 
     private void validateLocationRequest(LocationUpdateRequest request) {
@@ -128,16 +139,14 @@ public class LocationShareService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "location request is required");
         }
 
-        validateRequiredIds(request.getCoupleId(), request.getUserId());
-
-        if (request.getLatitude() == null || request.getLatitude() < -90 || request.getLatitude() > 90) {
+        if (request.getLat() == null || request.getLat() < -90 || request.getLat() > 90) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "latitude must be between -90 and 90");
         }
-        if (request.getLongitude() == null || request.getLongitude() < -180 || request.getLongitude() > 180) {
+        if (request.getLng() == null || request.getLng() < -180 || request.getLng() > 180) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "longitude must be between -180 and 180");
         }
-        if (request.getAccuracyMeters() != null && request.getAccuracyMeters() < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "accuracyMeters must not be negative");
+        if (request.getAccuracy() != null && request.getAccuracy() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "accuracy must not be negative");
         }
     }
 
@@ -147,16 +156,16 @@ public class LocationShareService {
         }
 
         ResolvedLocationNames resolvedNames = locationNameResolver.resolve(
-                request.getLatitude(),
-                request.getLongitude()
+                request.getLat(),
+                request.getLng()
         );
         if (resolvedNames == null) {
             resolvedNames = new ResolvedLocationNames(null, null);
         }
 
         return new ResolvedLocationNames(
-                firstText(resolvedNames.placeName(), request.getPlaceName()),
-                firstText(resolvedNames.addressName(), request.getAddressName())
+                resolvedNames.placeName(),
+                resolvedNames.addressName()
         );
     }
 
@@ -171,18 +180,10 @@ public class LocationShareService {
         double movedDistanceMeters = calculateDistanceMeters(
                 savedLocation.getLatitude(),
                 savedLocation.getLongitude(),
-                request.getLatitude(),
-                request.getLongitude()
+                request.getLat(),
+                request.getLng()
         );
         return movedDistanceMeters < nameRefreshDistanceMeters;
-    }
-
-    private String firstText(String primary, String fallback) {
-        if (StringUtils.hasText(primary)) {
-            return primary;
-        }
-
-        return StringUtils.hasText(fallback) ? fallback : null;
     }
 
     private double calculateDistanceMeters(
@@ -205,15 +206,6 @@ public class LocationShareService {
         return earthRadiusMeters * angularDistance;
     }
 
-    private void validateRequiredIds(Long coupleId, Long userId) {
-        if (coupleId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coupleId is required");
-        }
-        if (userId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userId is required");
-        }
-    }
-
     private void requireSharingEnabled(Long coupleId, Long userId) {
         if (!isSharingEnabled(coupleId, userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "location sharing is disabled");
@@ -224,5 +216,39 @@ public class LocationShareService {
         return locationShareSettingRepository.findByCoupleIdAndUserId(coupleId, userId)
                 .map(LocationShareSetting::isEnabled)
                 .orElse(false);
+    }
+
+    private CoupleContext resolveCoupleContext(Long currentUserId) {
+        if (currentUserId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "login is required");
+        }
+
+        CoupleMember member = coupleMemberRepository.findByUserId(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "connected partner not found"));
+
+        CoupleMember partner = coupleMemberRepository
+                .findFirstByCoupleIdAndUserIdNot(member.getCoupleId(), currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "connected partner not found"));
+
+        return new CoupleContext(member.getCoupleId(), currentUserId, partner.getUserId());
+    }
+
+    private LocalDateTime toRecordedAt(LocationUpdateRequest request) {
+        if (request.getCapturedAt() == null) {
+            return null;
+        }
+
+        return LocalDateTime.ofInstant(request.getCapturedAt().toInstant(), ZoneOffset.UTC);
+    }
+
+    private LocationResponse toLocationResponse(UserLocation location) {
+        return LocationResponse.from(location, isStale(location));
+    }
+
+    private boolean isStale(UserLocation location) {
+        return location.getUpdatedAt().plus(STALE_THRESHOLD).isBefore(LocalDateTime.now());
+    }
+
+    private record CoupleContext(Long coupleId, Long userId, Long partnerId) {
     }
 }

@@ -25,6 +25,8 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String CHAT_SUBSCRIBE_PREFIX = "/sub/chats/couples/";
     private static final String CHAT_PUBLISH_PREFIX = "/pub/chats/";
+    private static final String LOCATION_SUBSCRIBE_PREFIX = "/sub/locations/couples/";
+    private static final String LOCATION_PUBLISH_PREFIX = "/pub/locations/";
 
     private final JwtProvider jwtProvider;
     private final ChatParticipantResolver chatParticipantResolver;
@@ -39,14 +41,16 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
         }
 
-        if (command == StompCommand.SEND && isChatPublish(accessor.getDestination())) {
+        if (command == StompCommand.SEND
+                && (isChatPublish(accessor.getDestination()) || isLocationPublish(accessor.getDestination()))) {
             requireUser(accessor);
             return message;
         }
 
-        if (command == StompCommand.SUBSCRIBE && isChatSubscribe(accessor.getDestination())) {
+        if (command == StompCommand.SUBSCRIBE
+                && (isChatSubscribe(accessor.getDestination()) || isLocationSubscribe(accessor.getDestination()))) {
             Long userId = requireUser(accessor);
-            validateChatSubscription(userId, accessor.getDestination());
+            validateCoupleSubscription(userId, accessor.getDestination());
         }
 
         return message;
@@ -72,11 +76,11 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
         throw new AccessDeniedException("login is required");
     }
 
-    private void validateChatSubscription(Long userId, String destination) {
-        Long subscribedCoupleId = extractChatCoupleId(destination);
+    private void validateCoupleSubscription(Long userId, String destination) {
+        Long subscribedCoupleId = extractCoupleId(destination);
         ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(userId);
         if (!context.coupleId().equals(subscribedCoupleId)) {
-            throw new AccessDeniedException("chat room access denied");
+            throw new AccessDeniedException(resolveAccessDeniedMessage(destination));
         }
     }
 
@@ -88,15 +92,34 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
         return StringUtils.hasText(destination) && destination.startsWith(CHAT_SUBSCRIBE_PREFIX);
     }
 
-    private Long extractChatCoupleId(String destination) {
-        String suffix = destination.substring(CHAT_SUBSCRIBE_PREFIX.length());
+    private boolean isLocationPublish(String destination) {
+        return StringUtils.hasText(destination) && destination.startsWith(LOCATION_PUBLISH_PREFIX);
+    }
+
+    private boolean isLocationSubscribe(String destination) {
+        return StringUtils.hasText(destination) && destination.startsWith(LOCATION_SUBSCRIBE_PREFIX);
+    }
+
+    private Long extractCoupleId(String destination) {
+        String prefix = destination.startsWith(CHAT_SUBSCRIBE_PREFIX)
+                ? CHAT_SUBSCRIBE_PREFIX
+                : LOCATION_SUBSCRIBE_PREFIX;
+        String suffix = destination.substring(prefix.length());
         int slashIndex = suffix.indexOf('/');
         String coupleId = slashIndex < 0 ? suffix : suffix.substring(0, slashIndex);
         try {
             return Long.valueOf(coupleId);
         } catch (NumberFormatException exception) {
-            throw new MessageDeliveryException("invalid chat subscription destination");
+            throw new MessageDeliveryException("invalid couple subscription destination");
         }
+    }
+
+    private String resolveAccessDeniedMessage(String destination) {
+        if (destination.startsWith(CHAT_SUBSCRIBE_PREFIX)) {
+            return "chat room access denied";
+        }
+
+        return "location channel access denied";
     }
 
     private String resolveToken(StompHeaderAccessor accessor) {
