@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -63,7 +64,12 @@ public class MemoryAiAnalysisService {
                     .uri(RESPONSES_PATH)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(buildRequestBody(photo, request))
+                    .body(buildRequestBody(
+                            toDataUrl(photo),
+                            request == null ? null : request.getMemo(),
+                            request == null ? null : request.getLocationName(),
+                            request == null ? null : request.getTakenAt()
+                    ))
                     .retrieve()
                     .body(Map.class);
 
@@ -75,7 +81,42 @@ public class MemoryAiAnalysisService {
         }
     }
 
-    private Map<String, Object> buildRequestBody(MemoryPhotoFile photo, MemoryCreateRequest request) throws IOException {
+    public MemoryAiAnalysisResult analyzeImageUrl(
+            String imageUrl,
+            String memo,
+            String locationName,
+            LocalDateTime takenAt
+    ) {
+        if (!StringUtils.hasText(apiKey)) {
+            return MemoryAiAnalysisResult.pending();
+        }
+        if (!StringUtils.hasText(imageUrl)) {
+            return MemoryAiAnalysisResult.pending();
+        }
+
+        try {
+            Map<?, ?> response = restClient.post()
+                    .uri(RESPONSES_PATH)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(buildRequestBody(imageUrl.trim(), memo, locationName, takenAt))
+                    .retrieve()
+                    .body(Map.class);
+
+            List<MemoryAiTagCandidate> tags = parseTags(extractOutputText(response));
+            return MemoryAiAnalysisResult.completed(tags);
+        } catch (IOException | RuntimeException e) {
+            log.warn("Memory AI analysis failed: {}", e.getMessage());
+            return MemoryAiAnalysisResult.failed();
+        }
+    }
+
+    private Map<String, Object> buildRequestBody(
+            String imageUrl,
+            String memo,
+            String locationName,
+            LocalDateTime takenAt
+    ) throws IOException {
         return Map.of(
                 "model", model,
                 "input", List.of(Map.of(
@@ -83,11 +124,11 @@ public class MemoryAiAnalysisService {
                         "content", List.of(
                                 Map.of(
                                         "type", "input_text",
-                                        "text", buildPrompt(request)
+                                        "text", buildPrompt(memo, locationName, takenAt)
                                 ),
                                 Map.of(
                                         "type", "input_image",
-                                        "image_url", toDataUrl(photo),
+                                        "image_url", imageUrl,
                                         "detail", "low"
                                 )
                         )
@@ -96,18 +137,18 @@ public class MemoryAiAnalysisService {
         );
     }
 
-    private String buildPrompt(MemoryCreateRequest request) {
+    private String buildPrompt(String memo, String locationName, LocalDateTime takenAt) {
         StringBuilder prompt = new StringBuilder(promptTemplate);
 
         prompt.append("\n\nContext provided by user:");
-        if (request != null && StringUtils.hasText(request.getMemo())) {
-            prompt.append("\n- memo: ").append(request.getMemo().trim());
+        if (StringUtils.hasText(memo)) {
+            prompt.append("\n- memo: ").append(memo.trim());
         }
-        if (request != null && StringUtils.hasText(request.getLocationName())) {
-            prompt.append("\n- locationName: ").append(request.getLocationName().trim());
+        if (StringUtils.hasText(locationName)) {
+            prompt.append("\n- locationName: ").append(locationName.trim());
         }
-        if (request != null && request.getTakenAt() != null) {
-            prompt.append("\n- takenAt: ").append(request.getTakenAt());
+        if (takenAt != null) {
+            prompt.append("\n- takenAt: ").append(takenAt);
         }
 
         return prompt.toString();

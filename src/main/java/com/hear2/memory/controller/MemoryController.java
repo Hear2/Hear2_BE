@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1/memories")
 @RequiredArgsConstructor
-@Tag(name = "Memory Album", description = "추억 앨범 사진 업로드, 조회, 수정, 삭제 API")
+@Tag(name = "Memory Album", description = "추억 앨범 조회, 수정, 삭제 API. 신규 사진 업로드는 Memory Quick + Media presigned URL 흐름을 우선 사용합니다.")
 public class MemoryController {
 
     private final MemoryService memoryService;
@@ -42,8 +42,18 @@ public class MemoryController {
     private final Validator validator;
 
     @Operation(
-            summary = "추억 사진 업로드",
-            description = "로그인된 사용자의 커플 정보를 기준으로 사진을 저장합니다. 커플 ID와 업로더 ID는 토큰에서 자동 적용되며, 촬영 시간/좌표는 요청값 또는 사진 EXIF에서 가져옵니다."
+            summary = "[호환용] 추억 사진 직접 업로드",
+            description = """
+                    기존 테스트/호환용 multipart 직접 업로드 API입니다.
+                    신규 프론트 구현에서는 이 API를 메인으로 쓰지 말고,
+                    1) POST /api/v1/media/presigned-url 로 uploadUrl/objectKey 발급
+                    2) 프론트가 uploadUrl에 직접 PUT 업로드
+                    3) POST /api/v1/memory/quick 에 objectKey 전달
+                    흐름을 사용하세요.
+
+                    이 API는 로그인된 사용자의 커플 정보를 기준으로 사진을 저장합니다.
+                    커플 ID와 업로더 ID는 토큰에서 자동 적용되며, 촬영 시간/좌표는 요청값 또는 사진 EXIF에서 가져옵니다.
+                    """
     )
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<MemoryResponse> createMemory(
@@ -55,7 +65,7 @@ public class MemoryController {
                     required = true,
                     schema = @Schema(
                             type = "string",
-                            example = "{\"memo\":\"명지대에서 찍은 사진\",\"takenAt\":\"2026-05-11T10:30:00\",\"latitude\":37.2221,\"longitude\":127.1875,\"locationName\":\"명지대학교 자연캠퍼스\"}"
+                            example = "{\"memo\":\"명지대에서 찍은 사진\",\"takenAt\":\"2026-05-11T10:30:00\",\"latitude\":37.2221,\"longitude\":127.1875,\"locationName\":\"명지대학교 자연캠퍼스\",\"userTags\":[\"우리둘이\",\"특별한날\"]}"
                     )
             )
             @RequestPart("request") String request

@@ -14,11 +14,14 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -33,18 +36,24 @@ public class MemoryPhotoStorageService {
     private final String storageType;
     private final Path uploadRoot;
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
     private final String r2Bucket;
+    private final long readExpirationMinutes;
 
     public MemoryPhotoStorageService(
             @Value("${app.memory-storage.type:local}") String storageType,
             @Value("${app.memory-storage.upload-dir:memory-uploads}") String uploadDir,
             ObjectProvider<S3Client> s3ClientProvider,
-            @Value("${cloudflare.r2.bucket:}") String r2Bucket
+            ObjectProvider<S3Presigner> s3PresignerProvider,
+            @Value("${cloudflare.r2.bucket:}") String r2Bucket,
+            @Value("${app.media-storage.presigned-read-expiration-minutes:10}") long readExpirationMinutes
     ) {
         this.storageType = storageType.toLowerCase(Locale.ROOT);
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
         this.s3Client = s3ClientProvider.getIfAvailable();
+        this.s3Presigner = s3PresignerProvider.getIfAvailable();
         this.r2Bucket = r2Bucket;
+        this.readExpirationMinutes = readExpirationMinutes;
     }
 
     public MemoryPhotoStorageResult store(MemoryPhotoFile photo, Long coupleId) {
@@ -78,9 +87,50 @@ public class MemoryPhotoStorageService {
         );
     }
 
+    public MemoryPhotoStorageResult referenceExternal(String imageUrl) {
+        if (!StringUtils.hasText(imageUrl)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "imageUrl or objectKey is required");
+        }
+
+        String normalizedImageUrl = imageUrl.trim();
+
+        return new MemoryPhotoStorageResult(
+                normalizedImageUrl,
+                resolveExternalFileName(normalizedImageUrl),
+                "image/*",
+                0L
+        );
+    }
+
+    public String createReadUrl(String storedPhotoPath) {
+        if (!StringUtils.hasText(storedPhotoPath)) {
+            return null;
+        }
+        if (isExternalReference(storedPhotoPath)) {
+            return storedPhotoPath;
+        }
+        if (!R2.equals(storageType) || s3Presigner == null || !StringUtils.hasText(r2Bucket)) {
+            return null;
+        }
+
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(r2Bucket)
+                .key(storedPhotoPath)
+                .build();
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(readExpirationMinutes))
+                .getObjectRequest(getObjectRequest)
+                .build();
+
+        return s3Presigner.presignGetObject(presignRequest).url().toString();
+    }
+
     public MemoryPhotoContent load(String storedPhotoPath, String contentType) {
         if (!StringUtils.hasText(storedPhotoPath)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "memory photo not found");
+        }
+        if (isExternalReference(storedPhotoPath)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "external memory photo should be loaded from photoUrl");
         }
 
         if (R2.equals(storageType)) {
@@ -95,6 +145,9 @@ public class MemoryPhotoStorageService {
 
     public void delete(String storedPhotoPath) {
         if (!StringUtils.hasText(storedPhotoPath)) {
+            return;
+        }
+        if (isExternalReference(storedPhotoPath)) {
             return;
         }
 
@@ -228,6 +281,23 @@ public class MemoryPhotoStorageService {
     private String resolveExtension(String originalFileName) {
         String extension = StringUtils.getFilenameExtension(originalFileName);
         return extension == null ? "" : extension.toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveExternalFileName(String imageUrl) {
+        String path = imageUrl;
+        int queryIndex = path.indexOf('?');
+        if (queryIndex >= 0) {
+            path = path.substring(0, queryIndex);
+        }
+
+        String filename = StringUtils.getFilename(path);
+        return StringUtils.hasText(filename) ? filename : "memory-photo";
+    }
+
+    private boolean isExternalReference(String storedPhotoPath) {
+        return storedPhotoPath.startsWith("http://")
+                || storedPhotoPath.startsWith("https://")
+                || storedPhotoPath.startsWith("s3://");
     }
 
     private void validateR2Config() {

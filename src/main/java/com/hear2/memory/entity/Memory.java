@@ -92,12 +92,11 @@ public class Memory {
     }
 
     public void replaceAiTags(List<MemoryAiTag> aiTags) {
-        this.aiTags.clear();
-        if (aiTags == null) {
-            return;
-        }
+        replaceTags(MemoryTagSource.AI, aiTags);
+    }
 
-        aiTags.forEach(this::addAiTag);
+    public void replaceUserTags(List<MemoryAiTag> userTags) {
+        replaceTags(MemoryTagSource.USER, userTags);
     }
 
     public void markAiAnalyzed() {
@@ -119,5 +118,14 @@ public class Memory {
 
         aiTag.assignMemory(this);
         this.aiTags.add(aiTag);
+    }
+
+    private void replaceTags(MemoryTagSource source, List<MemoryAiTag> tags) {
+        this.aiTags.removeIf(tag -> tag.getSource() == source);
+        if (tags == null) {
+            return;
+        }
+
+        tags.forEach(this::addAiTag);
     }
 }

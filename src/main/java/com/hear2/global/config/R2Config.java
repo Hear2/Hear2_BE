@@ -9,11 +9,12 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.net.URI;
 
 @Configuration
-@ConditionalOnExpression("'${app.file-storage.type:local}' == 'r2' || '${app.memory-storage.type:local}' == 'r2'")
+@ConditionalOnExpression("'${app.file-storage.type:local}' == 'r2' || '${app.memory-storage.type:local}' == 'r2' || '${app.media-storage.type:local}' == 'r2'")
 public class R2Config {
 
     @Value("${cloudflare.r2.access-key}")
@@ -31,6 +32,22 @@ public class R2Config {
     @Bean
     public S3Client s3Client() {
         return S3Client.builder()
+                .endpointOverride(URI.create(endpoint))
+                .region(Region.of(region))
+                .serviceConfiguration(S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .build())
+                .credentialsProvider(
+                        StaticCredentialsProvider.create(
+                                AwsBasicCredentials.create(accessKey, secretKey)
+                        )
+                )
+                .build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner() {
+        return S3Presigner.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.of(region))
                 .serviceConfiguration(S3Configuration.builder()
