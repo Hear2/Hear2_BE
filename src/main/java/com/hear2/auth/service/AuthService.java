@@ -2,6 +2,7 @@ package com.hear2.auth.service;
 
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.EmailVerificationRequest;
+import com.hear2.auth.dto.EmailVerificationResendRequest;
 import com.hear2.auth.dto.EmailVerificationResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
@@ -85,6 +86,10 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid email or password");
         }
 
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "email verification required");
+        }
+
         return AuthResponse.from(user, createToken(user));
     }
 
@@ -155,6 +160,21 @@ public class AuthService {
                 .orElseThrow(this::invalidEmailVerificationToken);
         user.verifyEmail();
         emailVerificationTokenRepository.delete(verificationToken);
+
+        return EmailVerificationResponse.success();
+    }
+
+    @Transactional
+    public EmailVerificationResponse resendEmailVerification(EmailVerificationResendRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found"));
+
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "email already verified");
+        }
+
+        String verificationToken = saveEmailVerificationToken(user);
+        sendEmailVerificationEmail(user.getEmail(), verificationToken);
 
         return EmailVerificationResponse.success();
     }

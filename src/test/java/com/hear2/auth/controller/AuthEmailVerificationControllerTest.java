@@ -22,7 +22,9 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -138,6 +140,63 @@ class AuthEmailVerificationControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void emailVerificationResendRotatesTokenForUnverifiedUser() throws Exception {
+        User user = userRepository.save(User.builder()
+                .email("resend-email-verify-user@example.com")
+                .password("encoded-password")
+                .nickname("resend-email-verify-user")
+                .provider("LOCAL")
+                .build());
+        emailVerificationTokenRepository.save(EmailVerificationToken.builder()
+                .userId(user.getUserId())
+                .tokenHash(hashToken("old-email-verification-token"))
+                .expiresAt(LocalDateTime.now().plusMinutes(10))
+                .build());
+        EmailVerificationToken oldToken = emailVerificationTokenRepository.findByUserId(user.getUserId()).orElseThrow();
+
+        resendEmailVerification("resend-email-verify-user@example.com")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        assertThat(emailVerificationTokenRepository.findAll()).hasSize(1);
+        EmailVerificationToken rotatedToken = emailVerificationTokenRepository.findByUserId(user.getUserId()).orElseThrow();
+        assertThat(rotatedToken.getEmailVerificationTokenId()).isEqualTo(oldToken.getEmailVerificationTokenId());
+        assertThat(rotatedToken.getTokenHash()).hasSize(44);
+        assertThat(rotatedToken.getTokenHash()).isNotEqualTo(oldToken.getTokenHash());
+        assertThat(rotatedToken.getExpiresAt()).isAfter(LocalDateTime.now());
+
+        ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
+        verify(emailService).sendEmailVerificationEmail(eq("resend-email-verify-user@example.com"), tokenCaptor.capture());
+        assertThat(rotatedToken.getTokenHash()).isEqualTo(hashToken(tokenCaptor.getValue()));
+    }
+
+    @Test
+    void emailVerificationResendRejectsAlreadyVerifiedUser() throws Exception {
+        userRepository.save(User.builder()
+                .email("already-verified-user@example.com")
+                .password("encoded-password")
+                .nickname("already-verified-user")
+                .provider("LOCAL")
+                .emailVerified(true)
+                .build());
+
+        resendEmailVerification("already-verified-user@example.com")
+                .andExpect(status().isConflict());
+
+        assertThat(emailVerificationTokenRepository.findAll()).isEmpty();
+        verify(emailService, never()).sendEmailVerificationEmail(anyString(), anyString());
+    }
+
+    @Test
+    void emailVerificationResendRejectsMissingUser() throws Exception {
+        resendEmailVerification("missing-email-verify-user@example.com")
+                .andExpect(status().isNotFound());
+
+        assertThat(emailVerificationTokenRepository.findAll()).isEmpty();
+        verify(emailService, never()).sendEmailVerificationEmail(anyString(), anyString());
+    }
+
     private org.springframework.test.web.servlet.ResultActions verifyEmail(String token) throws Exception {
         return mockMvc.perform(post("/api/v1/auth/email/verify")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -146,6 +205,16 @@ class AuthEmailVerificationControllerTest {
                           "token": "%s"
                         }
                         """.formatted(token)));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions resendEmailVerification(String email) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/email/resend")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "email": "%s"
+                        }
+                        """.formatted(email)));
     }
 
     private String hashToken(String token) throws Exception {
