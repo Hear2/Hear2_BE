@@ -2,6 +2,7 @@ package com.hear2.auth.controller;
 
 import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.EmailVerificationRequest;
+import com.hear2.auth.dto.EmailVerificationResendRequest;
 import com.hear2.auth.dto.EmailVerificationResponse;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
@@ -71,6 +72,11 @@ public class AuthController {
     @PostMapping("/email/verify")
     public EmailVerificationResponse verifyEmail(@Valid @RequestBody EmailVerificationRequest request) {
         return authService.verifyEmail(request);
+    }
+
+    @PostMapping("/email/resend")
+    public EmailVerificationResponse resendEmailVerification(@Valid @RequestBody EmailVerificationResendRequest request) {
+        return authService.resendEmailVerification(request);
     }
 
     @GetMapping("/me")

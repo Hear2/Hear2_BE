@@ -57,6 +57,7 @@ class AuthPasswordResetConfirmControllerTest {
                 .password(passwordEncoder.encode("old-password"))
                 .nickname("confirm-reset-user")
                 .provider("LOCAL")
+                .emailVerified(true)
                 .build());
         String rawToken = "valid-confirm-reset-token";
         passwordResetTokenRepository.save(PasswordResetToken.builder()
