@@ -4,6 +4,7 @@ import com.hear2.auth.dto.AuthResponse;
 import com.hear2.auth.dto.EmailVerificationRequest;
 import com.hear2.auth.dto.EmailVerificationResendRequest;
 import com.hear2.auth.dto.EmailVerificationResponse;
+import com.hear2.auth.dto.GoogleOAuthLoginRequest;
 import com.hear2.auth.dto.LoginRequest;
 import com.hear2.auth.dto.MeResponse;
 import com.hear2.auth.dto.PasswordResetConfirmRequest;
@@ -20,6 +21,8 @@ import com.hear2.auth.entity.RefreshToken;
 import com.hear2.auth.repository.EmailVerificationTokenRepository;
 import com.hear2.auth.repository.PasswordResetTokenRepository;
 import com.hear2.auth.repository.RefreshTokenRepository;
+import com.hear2.auth.oauth.GoogleOAuthClient;
+import com.hear2.auth.oauth.GoogleOAuthUserInfo;
 import com.hear2.global.mail.EmailSendException;
 import com.hear2.global.mail.EmailService;
 import com.hear2.global.security.JwtProvider;
@@ -54,6 +57,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final EmailService emailService;
+    private final GoogleOAuthClient googleOAuthClient;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -88,6 +92,24 @@ public class AuthService {
 
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "email verification required");
+        }
+
+        return AuthResponse.from(user, createToken(user));
+    }
+
+    @Transactional
+    public AuthResponse loginWithGoogle(GoogleOAuthLoginRequest request) {
+        GoogleOAuthUserInfo googleUser = googleOAuthClient.verifyIdToken(request.getIdToken());
+
+        if (!googleUser.emailVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "google email is not verified");
+        }
+
+        User user = userRepository.findByEmail(googleUser.email())
+                .orElseGet(() -> userRepository.save(createGoogleUser(googleUser)));
+
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            user.verifyEmail();
         }
 
         return AuthResponse.from(user, createToken(user));
@@ -213,6 +235,27 @@ public class AuthService {
                 .tokenType("Bearer")
                 .expiresIn(jwtProvider.getAccessTokenExpirationSeconds())
                 .build();
+    }
+
+    private User createGoogleUser(GoogleOAuthUserInfo googleUser) {
+        return User.builder()
+                .email(googleUser.email())
+                .password(passwordEncoder.encode(createOpaqueToken()))
+                .nickname(resolveGoogleNickname(googleUser))
+                .profileImage(StringUtils.hasText(googleUser.picture()) ? googleUser.picture() : null)
+                .provider("GOOGLE")
+                .emailVerified(true)
+                .build();
+    }
+
+    private String resolveGoogleNickname(GoogleOAuthUserInfo googleUser) {
+        if (StringUtils.hasText(googleUser.name())) {
+            return googleUser.name();
+        }
+
+        String email = googleUser.email();
+        int atIndex = email.indexOf('@');
+        return atIndex > 0 ? email.substring(0, atIndex) : email;
     }
 
     private void saveRefreshToken(Long userId, String refreshToken) {

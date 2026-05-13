@@ -30,6 +30,7 @@ public class SecurityConfig {
                 .securityMatcher(
                         "/api/v1/auth/signup",
                         "/api/v1/auth/login",
+                        "/api/v1/auth/oauth/google",
                         "/api/v1/auth/reissue",
                         "/api/v1/auth/password-reset/request",
                         "/api/v1/auth/password-reset/verify",
@@ -51,6 +52,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/signup",
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/oauth/google",
                                 "/api/v1/auth/reissue",
                                 "/api/v1/auth/password-reset/request",
                                 "/api/v1/auth/password-reset/verify",
