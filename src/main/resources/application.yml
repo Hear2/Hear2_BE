@@ -58,11 +58,8 @@ app:
     credentials-path: ${FCM_CREDENTIALS_PATH:}
     project-id: ${FCM_PROJECT_ID:}
   jwt:
-    # TODO: set JWT_SECRET in the deployment environment.
     secret: ${JWT_SECRET:}
-    # TODO: set JWT_ACCESS_TOKEN_EXPIRATION_SECONDS in the deployment environment.
     access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:}
-    # TODO: set JWT_REFRESH_TOKEN_EXPIRATION_SECONDS in the deployment environment.
     refresh-token-expiration-seconds: ${JWT_REFRESH_TOKEN_EXPIRATION_SECONDS:}
 
 cloudflare:
@@ -93,4 +90,4 @@ google:
     client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
 
 server:
-  port: 8080
+  port: ${PORT:8080}
