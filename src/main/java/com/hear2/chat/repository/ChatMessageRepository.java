@@ -21,4 +21,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     List<ChatMessage> findTop20ByCoupleIdOrderByCreatedAtDesc(
             Long coupleId
     );
+
+    long countByCoupleId(Long coupleId);
 }
