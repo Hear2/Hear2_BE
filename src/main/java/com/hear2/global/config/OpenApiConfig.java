@@ -26,7 +26,7 @@ public class OpenApiConfig {
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME_NAME))
                 .info(new Info()
                         .title("Hear2 API")
-                        .description("Hear2 채팅, 감정 분석, 리스크 알림, AI 판사, 추억 앨범, 타임캡슐 API 문서")
+                        .description("Hear2 채팅, 감정 분석, 리스크 알림, AI 판사, 추억 앨범, 타임캡슐, 공유 캘린더 API 문서")
                         .version("v1")
                         .license(new License()
                                 .name("MIT")
