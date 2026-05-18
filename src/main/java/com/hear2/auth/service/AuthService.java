@@ -32,6 +32,7 @@ import com.hear2.global.security.JwtProvider;
 import com.hear2.user.entity.User;
 import com.hear2.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -61,6 +62,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final EmailService emailService;
+    private final ApplicationEventPublisher eventPublisher;
     private final GoogleOAuthClient googleOAuthClient;
     private final KakaoOAuthClient kakaoOAuthClient;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -81,7 +83,7 @@ public class AuthService {
 
         User savedUser = userRepository.save(user);
         String verificationToken = saveEmailVerificationToken(savedUser);
-        sendEmailVerificationEmail(savedUser.getEmail(), verificationToken);
+        publishEmailVerificationEmailRequested(savedUser.getEmail(), verificationToken);
 
         return AuthResponse.from(savedUser, createToken(savedUser));
     }
@@ -218,7 +220,7 @@ public class AuthService {
         }
 
         String verificationToken = saveEmailVerificationToken(user);
-        sendEmailVerificationEmail(user.getEmail(), verificationToken);
+        publishEmailVerificationEmailRequested(user.getEmail(), verificationToken);
 
         return EmailVerificationResponse.success();
     }
@@ -384,12 +386,8 @@ public class AuthService {
         }
     }
 
-    private void sendEmailVerificationEmail(String email, String verificationToken) {
-        try {
-            emailService.sendEmailVerificationEmail(email, verificationToken);
-        } catch (EmailSendException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "failed to send email verification email", exception);
-        }
+    private void publishEmailVerificationEmailRequested(String email, String verificationToken) {
+        eventPublisher.publishEvent(new EmailVerificationEmailRequestedEvent(email, verificationToken));
     }
 
     private String createOpaqueToken() {
