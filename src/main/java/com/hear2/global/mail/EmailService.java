@@ -43,7 +43,6 @@ public class EmailService {
         try {
             javaMailSender.send(message);
         } catch (MailException exception) {
-            exception.printStackTrace();
             throw new EmailSendException("failed to send email verification email", exception);
         }
     }
