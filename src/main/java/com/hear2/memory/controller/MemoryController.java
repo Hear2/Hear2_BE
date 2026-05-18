@@ -1,6 +1,8 @@
 package com.hear2.memory.controller;
 
 import com.hear2.global.response.ApiResponse;
+import com.hear2.memory.dto.MemoryCommentCreateRequest;
+import com.hear2.memory.dto.MemoryCommentResponse;
 import com.hear2.memory.dto.MemoryCreateRequest;
 import com.hear2.memory.dto.MemoryResponse;
 import com.hear2.memory.dto.MemoryUpdateRequest;
@@ -119,6 +121,36 @@ public class MemoryController {
             @Valid @RequestBody MemoryUpdateRequest request
     ) {
         return ApiResponse.success(memoryService.updateMemory(memoryId, request, currentUserId(authentication)));
+    }
+
+    @Operation(summary = "추억 우리의 한마디 작성", description = "로그인된 사용자의 커플 앨범 안에서 memoryId에 한마디 댓글을 작성합니다.")
+    @PostMapping("/items/{memoryId}/comments")
+    public ApiResponse<MemoryCommentResponse> createComment(
+            Authentication authentication,
+            @PathVariable Long memoryId,
+            @Valid @RequestBody MemoryCommentCreateRequest request
+    ) {
+        return ApiResponse.success(memoryService.createComment(memoryId, request, currentUserId(authentication)));
+    }
+
+    @Operation(summary = "추억 우리의 한마디 조회", description = "추억 상세 화면의 우리의 한마디 목록을 작성 순서대로 조회합니다.")
+    @GetMapping("/items/{memoryId}/comments")
+    public ApiResponse<List<MemoryCommentResponse>> getComments(
+            Authentication authentication,
+            @PathVariable Long memoryId
+    ) {
+        return ApiResponse.success(memoryService.getComments(memoryId, currentUserId(authentication)));
+    }
+
+    @Operation(summary = "추억 우리의 한마디 삭제", description = "본인이 작성한 한마디만 삭제할 수 있습니다.")
+    @DeleteMapping("/items/{memoryId}/comments/{commentId}")
+    public ApiResponse<Void> deleteComment(
+            Authentication authentication,
+            @PathVariable Long memoryId,
+            @PathVariable Long commentId
+    ) {
+        memoryService.deleteComment(memoryId, commentId, currentUserId(authentication));
+        return ApiResponse.success(null, "memory comment deleted");
     }
 
     @Operation(summary = "추억 삭제", description = "로그인된 사용자의 커플 앨범 안에서 memoryId에 해당하는 추억과 사진을 삭제합니다.")
