@@ -34,6 +34,13 @@ spring:
       max-request-size: 100MB
 
 app:
+  mail:
+    provider: resend
+    resend:
+      api-key: ${RESEND_API_KEY:}
+      from: ${RESEND_FROM_EMAIL:onboarding@resend.dev}
+      connect-timeout-ms: ${RESEND_CONNECT_TIMEOUT_MS:5000}
+      read-timeout-ms: ${RESEND_READ_TIMEOUT_MS:5000}
   file-storage:
     type: ${CHAT_STORAGE_TYPE:local}
     upload-dir: ${CHAT_UPLOAD_DIR:uploads}
