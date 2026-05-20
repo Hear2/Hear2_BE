@@ -9,6 +9,7 @@ import com.hear2.chat.repository.ChatMessageRepository;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
 import com.hear2.emotion.service.EmotionAnalysisService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final EmotionAnalysisService emotionAnalysisService;
     private final ChatParticipantResolver chatParticipantResolver;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ChatMessageResponse saveMessage(Long currentUserId, ChatMessageRequest request) {
@@ -50,11 +52,11 @@ public class ChatService {
 
         ChatMessage savedMessage = chatMessageRepository.save(message);
 
-        EmotionAnalysisResponse emotion = messageType == MessageType.TEXT
-                ? emotionAnalysisService.analyzeAndSave(savedMessage)
-                : null;
+        if (messageType == MessageType.TEXT) {
+            eventPublisher.publishEvent(new ChatMessageSavedEvent(savedMessage.getId()));
+        }
 
-        return ChatMessageResponse.from(savedMessage, emotion);
+        return ChatMessageResponse.from(savedMessage);
     }
 
     @Transactional(readOnly = true)

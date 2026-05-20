@@ -12,6 +12,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ChatMessageResponseTest {
 
     @Test
+    void returnsNullEmotionFieldsWhenEmotionAnalysisIsMissing() {
+        ChatMessage message = textMessage(100L);
+
+        ChatMessageResponse response = ChatMessageResponse.from(message);
+
+        assertThat(response.getEmotionType()).isNull();
+        assertThat(response.getEmotionScore()).isNull();
+        assertThat(response.getEmotionEmoji()).isNull();
+        assertThat(response.getRiskLevel()).isNull();
+        assertThat(response.getJudgeAvailable()).isFalse();
+        assertThat(response.getJudgeTriggerMessageId()).isNull();
+    }
+
+    @Test
     void exposesJudgeButtonForWarningRiskMessage() {
         ChatMessage message = textMessage(100L);
         EmotionAnalysisResponse emotion = emotion(RiskLevel.WARNING);
