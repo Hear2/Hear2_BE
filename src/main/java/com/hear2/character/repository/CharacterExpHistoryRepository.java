@@ -22,4 +22,17 @@ public interface CharacterExpHistoryRepository extends JpaRepository<CharacterEx
             @Param("coupleId") Long coupleId,
             @Param("earnedDate") LocalDate earnedDate
     );
+
+    @Query("""
+            select coalesce(sum(history.expAmount), 0)
+            from CharacterExpHistory history
+            where history.coupleId = :coupleId
+              and history.earnedDate = :earnedDate
+              and history.sourceType = :sourceType
+            """)
+    long sumExpAmountByCoupleIdAndEarnedDateAndSourceType(
+            @Param("coupleId") Long coupleId,
+            @Param("earnedDate") LocalDate earnedDate,
+            @Param("sourceType") CharacterExpSourceType sourceType
+    );
 }

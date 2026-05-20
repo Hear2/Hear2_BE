@@ -1,5 +1,7 @@
 package com.hear2.memory.controller;
 
+import com.hear2.character.repository.CharacterExpHistoryRepository;
+import com.hear2.character.repository.CoupleCharacterRepository;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
@@ -52,11 +54,19 @@ class MemoryAuthenticationControllerTest {
     @Autowired
     private MemoryRepository memoryRepository;
 
+    @Autowired
+    private CoupleCharacterRepository coupleCharacterRepository;
+
+    @Autowired
+    private CharacterExpHistoryRepository characterExpHistoryRepository;
+
     private User user;
     private Couple couple;
 
     @BeforeEach
     void setUp() {
+        characterExpHistoryRepository.deleteAll();
+        coupleCharacterRepository.deleteAll();
         memoryRepository.deleteAll();
         coupleMemberRepository.deleteAll();
         coupleRepository.deleteAll();
@@ -206,6 +216,29 @@ class MemoryAuthenticationControllerTest {
     }
 
     @Test
+    void createQuickMemoryGrantsCharacterExpUpToDailyMemoryLimit() throws Exception {
+        createQuickMemory("https://cdn.example.com/memories/photo-1.jpg");
+
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(20L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(1);
+
+        createQuickMemory("https://cdn.example.com/memories/photo-2.jpg");
+        createQuickMemory("https://cdn.example.com/memories/photo-3.jpg");
+
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(60L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(3);
+
+        createQuickMemory("https://cdn.example.com/memories/photo-4.jpg");
+
+        assertThat(memoryRepository.count()).isEqualTo(4);
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(60L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(3);
+    }
+
+    @Test
     void calendarAndByDateUseSpecUrls() throws Exception {
         createQuickMemory();
 
@@ -263,24 +296,31 @@ class MemoryAuthenticationControllerTest {
     }
 
     private Long createQuickMemory() throws Exception {
+        return createQuickMemory("https://cdn.example.com/memories/photo.jpg");
+    }
+
+    private Long createQuickMemory(String imageUrl) throws Exception {
         mockMvc.perform(post("/api/v1/memory/quick")
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "imageUrl": "https://cdn.example.com/memories/photo.jpg",
+                                  "imageUrl": "%s",
                                   "lat": 37.5641,
                                   "lng": 126.9244,
                                   "capturedAt": "2026-05-12T14:00:00Z",
                                   "userTags": ["우리둘이"]
                                 }
-                                """))
+                                """.formatted(imageUrl)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        return memoryRepository.findAll().get(0).getId();
+        return memoryRepository.findAll().stream()
+                .map(com.hear2.memory.entity.Memory::getId)
+                .max(Long::compareTo)
+                .orElseThrow();
     }
 
     private byte[] onePixelPng() {
