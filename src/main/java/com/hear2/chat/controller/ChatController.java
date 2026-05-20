@@ -35,7 +35,7 @@ public class ChatController {
 
     @Operation(
             summary = "채팅 메시지 전송",
-            description = "로그인된 사용자의 커플 정보를 기준으로 메시지를 저장합니다. TEXT 메시지는 저장 직후 GPT-4o 기반 감정 분석을 수행하고, 감정 이모지/점수/리스크 정보와 AI 판사 호출 가능 여부를 응답에 포함합니다. 주의/경고/위험 리스크가 감지되면 상대방에게 FCM 알림 발송을 시도합니다."
+            description = "로그인된 사용자의 커플 정보를 기준으로 메시지를 저장합니다. TEXT 메시지는 먼저 저장되고, 감정 분석은 커밋 이후 비동기로 수행됩니다. 따라서 POST 응답에서는 emotionType/emotionScore/emotionEmoji/riskLevel/judgeAvailable 등의 감정 분석 필드가 null 또는 기본값일 수 있습니다. AI 서버 장애가 있어도 메시지 저장은 성공해야 하며, 감정 분석이 나중에 성공하면 이후 목록 재조회 시 반영됩니다."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "메시지 전송 성공",
@@ -97,7 +97,7 @@ public class ChatController {
         return chatMediaStorageService.store(file);
     }
 
-    @Operation(summary = "내 채팅 메시지 목록 조회", description = "로그인된 사용자의 커플 기준으로 채팅 메시지를 오래된 순서로 조회하며, 저장된 감정 분석 결과를 함께 반환합니다.")
+    @Operation(summary = "내 채팅 메시지 목록 조회", description = "로그인된 사용자의 커플 기준으로 채팅 메시지를 오래된 순서로 조회합니다. 이미 emotion_analysis에 저장된 감정 분석 결과가 있으면 emotionType/emotionEmoji/riskLevel/judgeAvailable 등을 함께 반환하고, 아직 분석 전이거나 분석 실패한 메시지는 해당 감정 필드가 null 또는 기본값으로 반환됩니다.")
     @ApiResponse(responseCode = "200", description = "메시지 목록 조회 성공")
     @GetMapping("/messages")
     public List<ChatMessageResponse> getMessages(Authentication authentication) {
