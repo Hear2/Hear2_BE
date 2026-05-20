@@ -91,4 +91,14 @@ public class CoupleCharacter {
         }
         return 1;
     }
+
+    public void addExp(long expAmount) {
+        if (expAmount <= 0) {
+            return;
+        }
+        if (this.exp == null) {
+            this.exp = 0L;
+        }
+        this.exp += expAmount;
+    }
 }
