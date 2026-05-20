@@ -92,4 +92,12 @@ public class DailyQuestion {
         this.bothAnswered = true;
         this.bothAnsweredAt = bothAnsweredAt;
     }
+
+    public void markQnaRewardGranted(LocalDateTime qnaRewardGrantedAt) {
+        if (Boolean.TRUE.equals(this.qnaRewardGranted)) {
+            return;
+        }
+        this.qnaRewardGranted = true;
+        this.qnaRewardGrantedAt = qnaRewardGrantedAt;
+    }
 }

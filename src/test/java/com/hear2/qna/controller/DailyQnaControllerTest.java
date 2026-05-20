@@ -1,6 +1,8 @@
 package com.hear2.qna.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hear2.character.repository.CharacterExpHistoryRepository;
+import com.hear2.character.repository.CoupleCharacterRepository;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
@@ -61,6 +63,12 @@ class DailyQnaControllerTest {
     @Autowired
     private DailyQuestionTemplateRepository dailyQuestionTemplateRepository;
 
+    @Autowired
+    private CoupleCharacterRepository coupleCharacterRepository;
+
+    @Autowired
+    private CharacterExpHistoryRepository characterExpHistoryRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private User user;
@@ -69,6 +77,8 @@ class DailyQnaControllerTest {
 
     @BeforeEach
     void setUp() {
+        characterExpHistoryRepository.deleteAll();
+        coupleCharacterRepository.deleteAll();
         dailyAnswerRepository.deleteAll();
         dailyQuestionRepository.deleteAll();
         coupleMemberRepository.deleteAll();
@@ -189,6 +199,10 @@ class DailyQnaControllerTest {
 
         postAnswer(user.getUserId(), "my answer");
 
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(10L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(1);
+
         mockMvc.perform(get("/api/v1/qna/today")
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(partner.getUserId())))
                 .andExpect(status().isOk())
@@ -209,14 +223,20 @@ class DailyQnaControllerTest {
         LocalDateTime bothAnsweredAt = answeredQuestion.getBothAnsweredAt();
         assertThat(answeredQuestion.getBothAnswered()).isTrue();
         assertThat(bothAnsweredAt).isNotNull();
-        assertThat(answeredQuestion.getQnaRewardGranted()).isFalse();
-        assertThat(answeredQuestion.getQnaRewardGrantedAt()).isNull();
+        assertThat(answeredQuestion.getQnaRewardGranted()).isTrue();
+        assertThat(answeredQuestion.getQnaRewardGrantedAt()).isNotNull();
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(50L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(3);
 
         postAnswer(user.getUserId(), "edited answer");
 
         DailyQuestion editedQuestion = dailyQuestionRepository.findById(todayQuestion.getQuestionId()).orElseThrow();
         assertThat(editedQuestion.getBothAnsweredAt()).isEqualTo(bothAnsweredAt);
-        assertThat(editedQuestion.getQnaRewardGranted()).isFalse();
+        assertThat(editedQuestion.getQnaRewardGranted()).isTrue();
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(50L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(3);
     }
 
     @Test

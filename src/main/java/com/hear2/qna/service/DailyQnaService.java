@@ -1,5 +1,7 @@
 package com.hear2.qna.service;
 
+import com.hear2.character.service.CharacterService;
+import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
@@ -41,10 +43,13 @@ public class DailyQnaService {
     private static final int TEMPLATE_CYCLE_DAYS = 100;
     private static final int ANSWER_MAX_LENGTH = 500;
     private static final int ANSWER_REWARD_POINTS = 50;
+    private static final long QNA_ANSWER_EXP = 10L;
+    private static final long QNA_BONUS_EXP = 30L;
 
     private final DailyQuestionTemplateRepository dailyQuestionTemplateRepository;
     private final DailyQuestionRepository dailyQuestionRepository;
     private final DailyAnswerRepository dailyAnswerRepository;
+    private final CharacterService characterService;
     private final CoupleMemberRepository coupleMemberRepository;
     private final CoupleRepository coupleRepository;
 
@@ -87,14 +92,21 @@ public class DailyQnaService {
         if (existingAnswer.isPresent()) {
             existingAnswer.get().updateAnswer(normalizedAnswer);
         } else {
-            dailyAnswerRepository.save(DailyAnswer.builder()
+            DailyAnswer savedAnswer = dailyAnswerRepository.save(DailyAnswer.builder()
                     .questionId(dailyQuestion.getQuestionId())
                     .userId(userId)
                     .answer(normalizedAnswer)
                     .build());
+            characterService.grantExp(
+                    context.couple().getCoupleId(),
+                    CharacterExpSourceType.DAILY_QNA,
+                    "DAILY_QNA_ANSWER:" + savedAnswer.getAnswerId(),
+                    QNA_ANSWER_EXP
+            );
         }
 
         updateBothAnsweredIfNeeded(dailyQuestion);
+        grantBothAnsweredRewardIfNeeded(context.couple().getCoupleId(), dailyQuestion);
         AnswerView answers = getAnswerView(dailyQuestion, userId, context.partnerUserId());
 
         return new DailyAnswerResponse(
@@ -293,6 +305,23 @@ public class DailyQnaService {
         }
         if (dailyAnswerRepository.countDistinctUserIdsByQuestionId(dailyQuestion.getQuestionId()) >= 2) {
             dailyQuestion.markBothAnswered(LocalDateTime.now());
+        }
+    }
+
+    private void grantBothAnsweredRewardIfNeeded(Long coupleId, DailyQuestion dailyQuestion) {
+        if (!Boolean.TRUE.equals(dailyQuestion.getBothAnswered())) {
+            return;
+        }
+        if (Boolean.TRUE.equals(dailyQuestion.getQnaRewardGranted())) {
+            return;
+        }
+        if (characterService.grantExp(
+                coupleId,
+                CharacterExpSourceType.DAILY_QNA,
+                "DAILY_QNA_BONUS:" + dailyQuestion.getQuestionId(),
+                QNA_BONUS_EXP
+        ).granted()) {
+            dailyQuestion.markQnaRewardGranted(LocalDateTime.now());
         }
     }
 
