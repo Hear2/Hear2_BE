@@ -4,6 +4,8 @@ import com.hear2.attendance.dto.AttendanceCheckResponse;
 import com.hear2.attendance.dto.AttendanceTodayResponse;
 import com.hear2.attendance.entity.AttendanceCheck;
 import com.hear2.attendance.repository.AttendanceCheckRepository;
+import com.hear2.character.service.CharacterService;
+import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +20,11 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class AttendanceService {
 
+    private static final long ATTENDANCE_EXP = 10L;
+    private static final long ATTENDANCE_BONUS_EXP = 10L;
+
     private final AttendanceCheckRepository attendanceCheckRepository;
+    private final CharacterService characterService;
     private final CoupleMemberRepository coupleMemberRepository;
 
     @Transactional
@@ -28,14 +34,28 @@ public class AttendanceService {
         boolean alreadyChecked = attendanceCheckRepository.existsByUserIdAndAttendanceDate(userId, today);
 
         if (!alreadyChecked) {
-            attendanceCheckRepository.save(AttendanceCheck.builder()
+            AttendanceCheck attendanceCheck = attendanceCheckRepository.save(AttendanceCheck.builder()
                     .userId(userId)
                     .coupleId(coupleId)
                     .attendanceDate(today)
                     .build());
+            characterService.grantExp(
+                    coupleId,
+                    CharacterExpSourceType.ATTENDANCE,
+                    "ATTENDANCE:" + attendanceCheck.getAttendanceId(),
+                    ATTENDANCE_EXP
+            );
         }
 
         boolean coupleBothChecked = attendanceCheckRepository.countByCoupleIdAndAttendanceDate(coupleId, today) >= 2;
+        if (!alreadyChecked && coupleBothChecked) {
+            characterService.grantExp(
+                    coupleId,
+                    CharacterExpSourceType.ATTENDANCE,
+                    "ATTENDANCE_BONUS:" + coupleId + ":" + today,
+                    ATTENDANCE_BONUS_EXP
+            );
+        }
 
         return new AttendanceCheckResponse(
                 today,

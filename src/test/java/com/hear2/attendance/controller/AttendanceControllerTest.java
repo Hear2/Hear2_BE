@@ -1,6 +1,8 @@
 package com.hear2.attendance.controller;
 
 import com.hear2.attendance.repository.AttendanceCheckRepository;
+import com.hear2.character.repository.CharacterExpHistoryRepository;
+import com.hear2.character.repository.CoupleCharacterRepository;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
@@ -46,12 +48,20 @@ class AttendanceControllerTest {
     @Autowired
     private AttendanceCheckRepository attendanceCheckRepository;
 
+    @Autowired
+    private CoupleCharacterRepository coupleCharacterRepository;
+
+    @Autowired
+    private CharacterExpHistoryRepository characterExpHistoryRepository;
+
     private User user;
     private User partner;
     private Couple couple;
 
     @BeforeEach
     void setUp() {
+        characterExpHistoryRepository.deleteAll();
+        coupleCharacterRepository.deleteAll();
         attendanceCheckRepository.deleteAll();
         coupleMemberRepository.deleteAll();
         coupleRepository.deleteAll();
@@ -109,6 +119,9 @@ class AttendanceControllerTest {
                 .andExpect(jsonPath("$.coupleBothChecked").value(false));
 
         assertThat(attendanceCheckRepository.count()).isEqualTo(1);
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(10L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(1);
     }
 
     @Test
@@ -128,6 +141,20 @@ class AttendanceControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(partner.getUserId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.coupleBothChecked").value(true));
+
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(30L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(3);
+
+        mockMvc.perform(post("/api/v1/attendance/check")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(partner.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.alreadyChecked").value(true))
+                .andExpect(jsonPath("$.coupleBothChecked").value(true));
+
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(character -> assertThat(character.getExp()).isEqualTo(30L));
+        assertThat(characterExpHistoryRepository.count()).isEqualTo(3);
 
         mockMvc.perform(get("/api/v1/attendance/today")
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
