@@ -6,6 +6,9 @@ import com.hear2.chat.dto.ChatReadResponse;
 import com.hear2.chat.entity.ChatMessage;
 import com.hear2.chat.entity.MessageType;
 import com.hear2.chat.repository.ChatMessageRepository;
+import com.hear2.character.repository.CharacterExpHistoryRepository;
+import com.hear2.character.service.CharacterService;
+import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
 import com.hear2.emotion.service.EmotionAnalysisService;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -24,10 +28,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ChatService {
 
+    private static final long CHAT_EXP = 1L;
+    private static final long DAILY_CHAT_EXP_LIMIT = 50L;
+
     private final ChatMessageRepository chatMessageRepository;
     private final EmotionAnalysisService emotionAnalysisService;
     private final ChatParticipantResolver chatParticipantResolver;
     private final ApplicationEventPublisher eventPublisher;
+    private final CharacterService characterService;
+    private final CharacterExpHistoryRepository characterExpHistoryRepository;
 
     @Transactional
     public ChatMessageResponse saveMessage(Long currentUserId, ChatMessageRequest request) {
@@ -53,6 +62,7 @@ public class ChatService {
         ChatMessage savedMessage = chatMessageRepository.save(message);
 
         if (messageType == MessageType.TEXT) {
+            grantChatExp(context.coupleId(), savedMessage.getId());
             eventPublisher.publishEvent(new ChatMessageSavedEvent(savedMessage.getId()));
         }
 
@@ -153,5 +163,25 @@ public class ChatService {
 
     private Long resolveMediaSize(ChatMessageRequest request, MessageType messageType) {
         return messageType == MessageType.TEXT ? null : request.getMediaSize();
+    }
+
+    private void grantChatExp(Long coupleId, Long chatMessageId) {
+        long chatExpToday = characterExpHistoryRepository.sumExpAmountByCoupleIdAndEarnedDateAndSourceType(
+                coupleId,
+                LocalDate.now(),
+                CharacterExpSourceType.CHAT
+        );
+        long remainingChatExpToday = Math.max(DAILY_CHAT_EXP_LIMIT - chatExpToday, 0L);
+        long requestedExp = Math.min(CHAT_EXP, remainingChatExpToday);
+        if (requestedExp <= 0) {
+            return;
+        }
+
+        characterService.grantExp(
+                coupleId,
+                CharacterExpSourceType.CHAT,
+                "CHAT:" + chatMessageId,
+                requestedExp
+        );
     }
 }

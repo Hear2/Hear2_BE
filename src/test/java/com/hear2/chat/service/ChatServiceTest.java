@@ -6,15 +6,20 @@ import com.hear2.chat.dto.ChatMessageResponse;
 import com.hear2.chat.entity.ChatMessage;
 import com.hear2.chat.entity.MessageType;
 import com.hear2.chat.repository.ChatMessageRepository;
+import com.hear2.character.repository.CharacterExpHistoryRepository;
+import com.hear2.character.service.CharacterService;
+import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.emotion.service.EmotionAnalysisService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.lang.reflect.Field;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -26,11 +31,15 @@ class ChatServiceTest {
     private final EmotionAnalysisService emotionAnalysisService = mock(EmotionAnalysisService.class);
     private final ChatParticipantResolver chatParticipantResolver = mock(ChatParticipantResolver.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final CharacterService characterService = mock(CharacterService.class);
+    private final CharacterExpHistoryRepository characterExpHistoryRepository = mock(CharacterExpHistoryRepository.class);
     private final ChatService chatService = new ChatService(
             chatMessageRepository,
             emotionAnalysisService,
             chatParticipantResolver,
-            eventPublisher
+            eventPublisher,
+            characterService,
+            characterExpHistoryRepository
     );
 
     @Test
@@ -46,6 +55,12 @@ class ChatServiceTest {
         assertThat(response.getId()).isEqualTo(100L);
         assertThat(response.getContent()).isEqualTo("안녕");
         assertThat(response.getEmotionType()).isNull();
+        verify(characterExpHistoryRepository).sumExpAmountByCoupleIdAndEarnedDateAndSourceType(
+                eq(1L),
+                any(LocalDate.class),
+                eq(CharacterExpSourceType.CHAT)
+        );
+        verify(characterService).grantExp(1L, CharacterExpSourceType.CHAT, "CHAT:100", 1L);
         verify(eventPublisher).publishEvent(new ChatMessageSavedEvent(100L));
     }
 
@@ -61,7 +76,38 @@ class ChatServiceTest {
 
         assertThat(response.getId()).isEqualTo(101L);
         assertThat(response.getMessageType()).isEqualTo(MessageType.IMAGE);
+        verify(characterService, never()).grantExp(
+                any(),
+                any(),
+                any(),
+                eq(1L)
+        );
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void savesTextMessageWithoutGrantingExpWhenDailyChatLimitReached() throws Exception {
+        ChatMessageRequest request = textRequest("hello");
+        when(chatParticipantResolver.resolve(10L))
+                .thenReturn(new ChatParticipantResolver.ChatRoomContext(1L, 10L, 11L));
+        when(chatMessageRepository.save(any(ChatMessage.class)))
+                .thenAnswer(invocation -> savedMessage(invocation.getArgument(0), 151L));
+        when(characterExpHistoryRepository.sumExpAmountByCoupleIdAndEarnedDateAndSourceType(
+                eq(1L),
+                any(LocalDate.class),
+                eq(CharacterExpSourceType.CHAT)
+        )).thenReturn(50L);
+
+        ChatMessageResponse response = chatService.saveMessage(10L, request);
+
+        assertThat(response.getId()).isEqualTo(151L);
+        verify(characterService, never()).grantExp(
+                any(),
+                any(),
+                any(),
+                eq(1L)
+        );
+        verify(eventPublisher).publishEvent(new ChatMessageSavedEvent(151L));
     }
 
     @Test
