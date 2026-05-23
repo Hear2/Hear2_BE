@@ -1,5 +1,6 @@
 package com.hear2.character.controller;
 
+import com.hear2.character.dto.CharacterExpHistoryTodayResponse;
 import com.hear2.character.dto.CharacterNameUpdateRequest;
 import com.hear2.character.dto.CharacterResponse;
 import com.hear2.character.service.CharacterService;
@@ -33,6 +34,12 @@ public class CharacterController {
             @Valid @RequestBody CharacterNameUpdateRequest request
     ) {
         return characterService.updateCharacterName(currentUserId(authentication), request);
+    }
+
+    @Operation(summary = "Get today's character EXP history")
+    @GetMapping("/api/v1/character/exp/history/today")
+    public CharacterExpHistoryTodayResponse getTodayExpHistory(Authentication authentication) {
+        return characterService.getTodayExpHistory(currentUserId(authentication));
     }
 
     private Long currentUserId(Authentication authentication) {

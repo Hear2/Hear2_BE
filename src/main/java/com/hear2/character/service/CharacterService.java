@@ -1,6 +1,8 @@
 package com.hear2.character.service;
 
 import com.hear2.character.dto.CharacterExpGrantResult;
+import com.hear2.character.dto.CharacterExpHistoryItemResponse;
+import com.hear2.character.dto.CharacterExpHistoryTodayResponse;
 import com.hear2.character.dto.CharacterNameUpdateRequest;
 import com.hear2.character.dto.CharacterResponse;
 import com.hear2.character.entity.CharacterExpHistory;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +48,18 @@ public class CharacterService {
         character.changeName(request.name());
 
         return CharacterResponse.from(character);
+    }
+
+    @Transactional(readOnly = true)
+    public CharacterExpHistoryTodayResponse getTodayExpHistory(Long userId) {
+        Long coupleId = resolveCoupleId(userId);
+        List<CharacterExpHistoryItemResponse> items = characterExpHistoryRepository
+                .findByCoupleIdAndEarnedDateOrderByCreatedAtAsc(coupleId, LocalDate.now())
+                .stream()
+                .map(CharacterExpHistoryItemResponse::from)
+                .toList();
+
+        return CharacterExpHistoryTodayResponse.from(items);
     }
 
     @Transactional

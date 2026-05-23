@@ -7,10 +7,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public interface CharacterExpHistoryRepository extends JpaRepository<CharacterExpHistory, Long> {
 
     boolean existsBySourceTypeAndSourceId(CharacterExpSourceType sourceType, String sourceId);
+
+    List<CharacterExpHistory> findByCoupleIdAndEarnedDateOrderByCreatedAtAsc(Long coupleId, LocalDate earnedDate);
 
     @Query("""
             select coalesce(sum(history.expAmount), 0)
