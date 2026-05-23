@@ -30,6 +30,14 @@ public class CoupleStatusResponse {
                 .build();
     }
 
+    public static CoupleStatusResponse pending(String coupleCode) {
+        return CoupleStatusResponse.builder()
+                .connected(false)
+                .coupleCode(coupleCode)
+                .memberCount(0)
+                .build();
+    }
+
     public static CoupleStatusResponse from(Couple couple, long memberCount) {
         return CoupleStatusResponse.builder()
                 .connected(memberCount >= 2)

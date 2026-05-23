@@ -3,7 +3,9 @@ package com.hear2.couple.service;
 import com.hear2.couple.dto.CoupleConnectRequest;
 import com.hear2.couple.dto.CoupleStatusResponse;
 import com.hear2.couple.entity.Couple;
+import com.hear2.couple.entity.CoupleCode;
 import com.hear2.couple.entity.CoupleMember;
+import com.hear2.couple.repository.CoupleCodeRepository;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.couple.repository.CoupleRepository;
 import com.hear2.user.repository.UserRepository;
@@ -28,6 +30,7 @@ public class CoupleService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final CoupleRepository coupleRepository;
+    private final CoupleCodeRepository coupleCodeRepository;
     private final CoupleMemberRepository coupleMemberRepository;
     private final UserRepository userRepository;
 
@@ -39,17 +42,12 @@ public class CoupleService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "user already has a couple");
         }
 
-        Couple couple = coupleRepository.save(Couple.builder()
-                .coupleCode(generateUniqueCode())
+        CoupleCode coupleCode = coupleCodeRepository.save(CoupleCode.builder()
+                .code(generateUniqueCode())
+                .issuerUserId(userId)
                 .build());
 
-        coupleMemberRepository.save(CoupleMember.builder()
-                .coupleId(couple.getCoupleId())
-                .userId(userId)
-                .role(OWNER_ROLE)
-                .build());
-
-        return CoupleStatusResponse.from(couple, 1);
+        return CoupleStatusResponse.pending(coupleCode.getCode());
     }
 
     @Transactional
@@ -60,21 +58,37 @@ public class CoupleService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "user already has a couple");
         }
 
-        Couple couple = coupleRepository.findByCoupleCode(normalizeCode(request.getCoupleCode()))
+        CoupleCode coupleCode = coupleCodeRepository.findByCode(normalizeCode(request.getCoupleCode()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple code not found"));
 
-        long memberCount = coupleMemberRepository.countByCoupleId(couple.getCoupleId());
-        if (memberCount >= 2) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "couple already connected");
+        if (coupleCode.isUsed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "couple code already used");
+        }
+        if (coupleCode.getIssuerUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "cannot connect with own couple code");
+        }
+        if (coupleMemberRepository.existsByUserId(coupleCode.getIssuerUserId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "couple code already used");
         }
 
+        Couple couple = coupleRepository.save(Couple.builder()
+                .coupleCode(coupleCode.getCode())
+                .build());
+
+        coupleMemberRepository.save(CoupleMember.builder()
+                .coupleId(couple.getCoupleId())
+                .userId(coupleCode.getIssuerUserId())
+                .role(OWNER_ROLE)
+                .build());
         coupleMemberRepository.save(CoupleMember.builder()
                 .coupleId(couple.getCoupleId())
                 .userId(userId)
                 .role(PARTNER_ROLE)
                 .build());
+        markActiveCodesUsed(coupleCode.getIssuerUserId(), couple.getCoupleId());
+        markActiveCodesUsed(userId, couple.getCoupleId());
 
-        return CoupleStatusResponse.from(couple, memberCount + 1);
+        return CoupleStatusResponse.from(couple, 2);
     }
 
     @Transactional(readOnly = true)
@@ -88,7 +102,9 @@ public class CoupleService {
                     long memberCount = coupleMemberRepository.countByCoupleId(couple.getCoupleId());
                     return CoupleStatusResponse.from(couple, memberCount);
                 })
-                .orElseGet(CoupleStatusResponse::disconnected);
+                .orElseGet(() -> coupleCodeRepository.findTopByIssuerUserIdAndUsedAtIsNullOrderByCreatedAtDesc(userId)
+                        .map(coupleCode -> CoupleStatusResponse.pending(coupleCode.getCode()))
+                        .orElseGet(CoupleStatusResponse::disconnected));
     }
 
     private void validateUser(Long userId) {
@@ -100,7 +116,7 @@ public class CoupleService {
     private String generateUniqueCode() {
         for (int attempt = 0; attempt < CODE_GENERATION_MAX_ATTEMPTS; attempt++) {
             String code = generateCode();
-            if (!coupleRepository.existsByCoupleCode(code)) {
+            if (!coupleCodeRepository.existsByCode(code) && !coupleRepository.existsByCoupleCode(code)) {
                 return code;
             }
         }
@@ -118,5 +134,10 @@ public class CoupleService {
 
     private String normalizeCode(String coupleCode) {
         return coupleCode.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private void markActiveCodesUsed(Long userId, Long coupleId) {
+        coupleCodeRepository.findByIssuerUserIdAndUsedAtIsNull(userId)
+                .forEach(coupleCode -> coupleCode.markUsed(coupleId));
     }
 }
