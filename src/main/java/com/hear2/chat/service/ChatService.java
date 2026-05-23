@@ -12,7 +12,7 @@ import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
 import com.hear2.emotion.service.EmotionAnalysisService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ChatService {
 
@@ -34,7 +35,6 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final EmotionAnalysisService emotionAnalysisService;
     private final ChatParticipantResolver chatParticipantResolver;
-    private final ApplicationEventPublisher eventPublisher;
     private final CharacterService characterService;
     private final CharacterExpHistoryRepository characterExpHistoryRepository;
 
@@ -61,12 +61,17 @@ public class ChatService {
 
         ChatMessage savedMessage = chatMessageRepository.save(message);
 
+        EmotionAnalysisResponse emotion = null;
         if (messageType == MessageType.TEXT) {
             grantChatExp(context.coupleId(), savedMessage.getId());
-            eventPublisher.publishEvent(new ChatMessageSavedEvent(savedMessage.getId()));
+            try {
+                emotion = emotionAnalysisService.analyzeAndSave(savedMessage);
+            } catch (Exception exception) {
+                log.warn("Emotion analysis failed after chat message save. messageId={}", savedMessage.getId(), exception);
+            }
         }
 
-        return ChatMessageResponse.from(savedMessage);
+        return ChatMessageResponse.from(savedMessage, emotion);
     }
 
     @Transactional(readOnly = true)
