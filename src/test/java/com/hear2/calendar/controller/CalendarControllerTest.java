@@ -4,6 +4,9 @@ import com.hear2.calendar.entity.CalendarEvent;
 import com.hear2.calendar.entity.CalendarEventVisibility;
 import com.hear2.calendar.repository.CalendarEventMemoryLinkRepository;
 import com.hear2.calendar.repository.CalendarEventRepository;
+import com.hear2.chat.entity.ChatMessage;
+import com.hear2.chat.entity.MessageType;
+import com.hear2.chat.repository.ChatMessageRepository;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
@@ -28,6 +31,7 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -65,6 +69,9 @@ class CalendarControllerTest {
     @Autowired
     private MemoryAiTagRepository memoryAiTagRepository;
 
+    @Autowired
+    private ChatMessageRepository chatMessageRepository;
+
     private User user;
     private User partner;
     private Couple couple;
@@ -73,6 +80,7 @@ class CalendarControllerTest {
     void setUp() {
         calendarEventMemoryLinkRepository.deleteAll();
         calendarEventRepository.deleteAll();
+        chatMessageRepository.deleteAll();
         memoryAiTagRepository.deleteAll();
         memoryRepository.deleteAll();
         coupleMemberRepository.deleteAll();
@@ -172,6 +180,61 @@ class CalendarControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.events[0].title").value("서울숲 데이트"))
                 .andExpect(jsonPath("$.data.memories[0].id").value(memory.getId()));
+    }
+
+    @Test
+    void recurringEventIsExpandedInMonthAndDateDetail() throws Exception {
+        mockMvc.perform(post("/api/v1/calendar/events")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "매주 산책",
+                                  "target": "SHARED",
+                                  "startsAt": "2026-04-07T01:00:00Z",
+                                  "endsAt": "2026-04-07T02:00:00Z",
+                                  "recurrenceRule": "FREQ=WEEKLY;INTERVAL=1;COUNT=4"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/calendar/month")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId()))
+                        .param("year", "2026")
+                        .param("month", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.days[6].events[*].title", hasItem("매주 산책")))
+                .andExpect(jsonPath("$.data.days[13].events[*].title", hasItem("매주 산책")))
+                .andExpect(jsonPath("$.data.days[20].events[*].title", hasItem("매주 산책")))
+                .andExpect(jsonPath("$.data.days[27].events[*].title", hasItem("매주 산책")));
+
+        mockMvc.perform(get("/api/v1/calendar/dates/{date}", "2026-04-21")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.events[0].title").value("매주 산책"))
+                .andExpect(jsonPath("$.data.events[0].startsAt").value("2026-04-21T01:00:00Z"));
+    }
+
+    @Test
+    void linkChatMessageRequiresSameCoupleMessage() throws Exception {
+        CalendarEvent event = saveEvent("서울숲 데이트", user.getUserId(), CalendarEventVisibility.SHARED, 12);
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .coupleId(couple.getCoupleId())
+                .senderId(user.getUserId())
+                .receiverId(partner.getUserId())
+                .content("이날 같이 가자")
+                .messageType(MessageType.TEXT)
+                .build());
+
+        mockMvc.perform(post("/api/v1/calendar/events/{eventId}/chat-messages/{messageId}", event.getId(), message.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkedChatMessageId").value(message.getId()));
+
+        mockMvc.perform(delete("/api/v1/calendar/events/{eventId}/chat-message", event.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkedChatMessageId").value(nullValue()));
     }
 
     @Test

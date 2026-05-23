@@ -169,4 +169,18 @@ public class CalendarEvent {
             this.tags.addAll(tags);
         }
     }
+
+    public void markExternalSync(
+            CalendarExternalProvider externalProvider,
+            String externalEventId,
+            LocalDateTime externalSyncedAt
+    ) {
+        this.externalProvider = externalProvider;
+        this.externalEventId = externalEventId;
+        this.externalSyncedAt = externalSyncedAt;
+    }
+
+    public void linkChatMessage(Long linkedChatMessageId) {
+        this.linkedChatMessageId = linkedChatMessageId;
+    }
 }

@@ -47,6 +47,16 @@ public record CalendarEventResponse(
             CalendarEventViewType viewType,
             List<MemoryResponse> linkedMemories
     ) {
+        return from(event, viewType, linkedMemories, event.getStartsAt(), event.getEndsAt());
+    }
+
+    public static CalendarEventResponse from(
+            CalendarEvent event,
+            CalendarEventViewType viewType,
+            List<MemoryResponse> linkedMemories,
+            LocalDateTime startsAt,
+            LocalDateTime endsAt
+    ) {
         return CalendarEventResponse.builder()
                 .id(event.getId())
                 .coupleId(event.getCoupleId())
@@ -56,8 +66,8 @@ public record CalendarEventResponse(
                 .visibility(event.getVisibility())
                 .viewType(viewType)
                 .color(CalendarEventColor.from(viewType))
-                .startsAt(toUtc(event.getStartsAt()))
-                .endsAt(toUtc(event.getEndsAt()))
+                .startsAt(toUtc(startsAt))
+                .endsAt(toUtc(endsAt))
                 .allDay(event.isAllDay())
                 .locationName(event.getLocationName())
                 .addressName(event.getAddressName())

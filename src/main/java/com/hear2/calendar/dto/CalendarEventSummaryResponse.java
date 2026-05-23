@@ -19,13 +19,22 @@ public record CalendarEventSummaryResponse(
 ) {
 
     public static CalendarEventSummaryResponse from(CalendarEvent event, CalendarEventViewType viewType) {
+        return from(event, viewType, event.getStartsAt(), event.getEndsAt());
+    }
+
+    public static CalendarEventSummaryResponse from(
+            CalendarEvent event,
+            CalendarEventViewType viewType,
+            java.time.LocalDateTime startsAt,
+            java.time.LocalDateTime endsAt
+    ) {
         return CalendarEventSummaryResponse.builder()
                 .id(event.getId())
                 .title(event.getTitle())
                 .viewType(viewType)
                 .color(CalendarEventColor.from(viewType))
-                .startsAt(toUtc(event.getStartsAt()))
-                .endsAt(toUtc(event.getEndsAt()))
+                .startsAt(toUtc(startsAt))
+                .endsAt(toUtc(endsAt))
                 .allDay(event.isAllDay())
                 .build();
     }

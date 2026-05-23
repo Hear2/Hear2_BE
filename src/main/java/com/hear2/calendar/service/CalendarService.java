@@ -17,6 +17,7 @@ import com.hear2.calendar.entity.CalendarEventViewType;
 import com.hear2.calendar.entity.CalendarEventVisibility;
 import com.hear2.calendar.repository.CalendarEventMemoryLinkRepository;
 import com.hear2.calendar.repository.CalendarEventRepository;
+import com.hear2.chat.repository.ChatMessageRepository;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.memory.dto.MemoryCalendarDayResponse;
@@ -33,8 +34,11 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.Duration;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -50,11 +54,15 @@ public class CalendarService {
 
     private static final int DEFAULT_UPCOMING_LIMIT = 10;
     private static final int MAX_UPCOMING_LIMIT = 50;
+    private static final int RECURRENCE_LOOKAHEAD_MONTHS = 12;
+    private static final int MAX_RECURRENCE_OCCURRENCES = 1000;
 
     private final CalendarEventRepository calendarEventRepository;
     private final CalendarEventMemoryLinkRepository calendarEventMemoryLinkRepository;
     private final CoupleMemberRepository coupleMemberRepository;
     private final MemoryRepository memoryRepository;
+    private final GoogleCalendarService googleCalendarService;
+    private final ChatMessageRepository chatMessageRepository;
 
     @Transactional
     public CalendarEventResponse createEvent(CalendarEventCreateRequest request, Long currentUserId) {
@@ -65,6 +73,7 @@ public class CalendarService {
         validateDateRange(startsAt, endsAt);
 
         EventOwnership ownership = resolveOwnership(request.getTarget(), context);
+        validateLinkedChatMessage(context.coupleId(), request.getLinkedChatMessageId());
         CalendarEvent event = CalendarEvent.builder()
                 .coupleId(context.coupleId())
                 .ownerId(ownership.ownerId())
@@ -87,6 +96,7 @@ public class CalendarService {
 
         CalendarEvent savedEvent = calendarEventRepository.save(event);
         linkMemories(context.coupleId(), savedEvent.getId(), request.getMemoryIds());
+        googleCalendarService.syncEventIfConnected(savedEvent, currentUserId);
 
         return toEventResponse(savedEvent, context.userId());
     }
@@ -100,13 +110,13 @@ public class CalendarService {
         LocalDateTime rangeStart = monthStart.atStartOfDay();
         LocalDateTime rangeEnd = monthEnd.atTime(23, 59, 59);
 
-        List<CalendarEvent> events = calendarEventRepository.findEventsInRange(
+        List<CalendarEvent> events = calendarEventRepository.findEventCandidatesInRange(
                 context.coupleId(),
                 rangeStart,
                 rangeEnd
         );
         Map<LocalDate, List<CalendarEventSummaryResponse>> eventsByDate = expandEventsByDate(
-                events,
+                expandOccurrences(events, rangeStart, rangeEnd),
                 monthStart,
                 monthEnd,
                 context.userId()
@@ -142,13 +152,16 @@ public class CalendarService {
         }
 
         CoupleContext context = resolveCoupleContext(currentUserId);
-        List<CalendarEventResponse> events = calendarEventRepository.findEventsInRange(
-                        context.coupleId(),
-                        date.atStartOfDay(),
-                        date.atTime(23, 59, 59)
+        LocalDateTime rangeStart = date.atStartOfDay();
+        LocalDateTime rangeEnd = date.atTime(23, 59, 59);
+        List<CalendarEventResponse> events = expandOccurrences(
+                        calendarEventRepository.findEventCandidatesInRange(context.coupleId(), rangeStart, rangeEnd),
+                        rangeStart,
+                        rangeEnd
                 )
                 .stream()
-                .map(event -> toEventResponse(event, context.userId()))
+                .sorted(Comparator.comparing(CalendarEventOccurrence::startsAt))
+                .map(occurrence -> toEventResponse(occurrence, context.userId()))
                 .toList();
         List<MemoryResponse> memories = memoryRepository
                 .findByCoupleIdAndMemoryDateOrderByCreatedAtDesc(context.coupleId(), date)
@@ -168,14 +181,23 @@ public class CalendarService {
         CoupleContext context = resolveCoupleContext(currentUserId);
         int normalizedLimit = normalizeUpcomingLimit(limit);
 
-        List<CalendarEventSummaryResponse> events = calendarEventRepository
-                .findByCoupleIdAndStartsAtGreaterThanEqualOrderByStartsAtAscIdAsc(
-                        context.coupleId(),
-                        LocalDateTime.now(ZoneOffset.UTC)
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime lookaheadEnd = now.plusMonths(RECURRENCE_LOOKAHEAD_MONTHS);
+        List<CalendarEventSummaryResponse> events = expandOccurrences(
+                        calendarEventRepository.findEventCandidatesInRange(context.coupleId(), now, lookaheadEnd),
+                        now,
+                        lookaheadEnd
                 )
                 .stream()
+                .filter(occurrence -> !occurrence.endsAt().isBefore(now))
+                .sorted(Comparator.comparing(CalendarEventOccurrence::startsAt))
                 .limit(normalizedLimit)
-                .map(event -> CalendarEventSummaryResponse.from(event, resolveViewType(event, context.userId())))
+                .map(occurrence -> CalendarEventSummaryResponse.from(
+                        occurrence.event(),
+                        resolveViewType(occurrence.event(), context.userId()),
+                        occurrence.startsAt(),
+                        occurrence.endsAt()
+                ))
                 .toList();
 
         return CalendarUpcomingResponse.builder()
@@ -198,6 +220,7 @@ public class CalendarService {
         LocalDateTime endsAt = toUtcDateTimeOrDefault(request.getEndsAt(), startsAt);
         validateDateRange(startsAt, endsAt);
         EventOwnership ownership = resolveOwnership(request.getTarget(), context);
+        validateLinkedChatMessage(context.coupleId(), request.getLinkedChatMessageId());
 
         event.update(
                 normalizeRequired(request.getTitle(), "title is required"),
@@ -216,6 +239,7 @@ public class CalendarService {
                 request.getRemindBeforeMinutes(),
                 request.getLinkedChatMessageId()
         );
+        googleCalendarService.syncEventIfConnected(event, currentUserId);
 
         return toEventResponse(event, context.userId());
     }
@@ -225,6 +249,7 @@ public class CalendarService {
         CoupleContext context = resolveCoupleContext(currentUserId);
         CalendarEvent event = findEvent(context.coupleId(), eventId);
 
+        googleCalendarService.deleteGoogleEventIfConnected(event, currentUserId);
         calendarEventMemoryLinkRepository.deleteByCoupleIdAndEventId(context.coupleId(), event.getId());
         calendarEventRepository.delete(event);
     }
@@ -277,9 +302,40 @@ public class CalendarService {
                 .toList();
     }
 
+    @Transactional
+    public CalendarEventResponse linkChatMessage(Long eventId, Long messageId, Long currentUserId) {
+        CoupleContext context = resolveCoupleContext(currentUserId);
+        CalendarEvent event = findEvent(context.coupleId(), eventId);
+        validateRequiredChatMessage(context.coupleId(), messageId);
+
+        event.linkChatMessage(messageId);
+        return toEventResponse(event, context.userId());
+    }
+
+    @Transactional
+    public CalendarEventResponse unlinkChatMessage(Long eventId, Long currentUserId) {
+        CoupleContext context = resolveCoupleContext(currentUserId);
+        CalendarEvent event = findEvent(context.coupleId(), eventId);
+
+        event.linkChatMessage(null);
+        return toEventResponse(event, context.userId());
+    }
+
     private CalendarEventResponse toEventResponse(CalendarEvent event, Long currentUserId) {
         List<MemoryResponse> linkedMemories = findLinkedMemories(event.getCoupleId(), event.getId());
         return CalendarEventResponse.from(event, resolveViewType(event, currentUserId), linkedMemories);
+    }
+
+    private CalendarEventResponse toEventResponse(CalendarEventOccurrence occurrence, Long currentUserId) {
+        CalendarEvent event = occurrence.event();
+        List<MemoryResponse> linkedMemories = findLinkedMemories(event.getCoupleId(), event.getId());
+        return CalendarEventResponse.from(
+                event,
+                resolveViewType(event, currentUserId),
+                linkedMemories,
+                occurrence.startsAt(),
+                occurrence.endsAt()
+        );
     }
 
     private List<MemoryResponse> findLinkedMemories(Long coupleId, Long eventId) {
@@ -331,6 +387,21 @@ public class CalendarService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "memory not found"));
     }
 
+    private void validateLinkedChatMessage(Long coupleId, Long messageId) {
+        if (messageId == null) {
+            return;
+        }
+        validateRequiredChatMessage(coupleId, messageId);
+    }
+
+    private void validateRequiredChatMessage(Long coupleId, Long messageId) {
+        if (messageId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "messageId is required");
+        }
+        chatMessageRepository.findByIdAndCoupleId(messageId, coupleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "chat message not found"));
+    }
+
     private CalendarEvent findEvent(Long coupleId, Long eventId) {
         if (eventId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "eventId is required");
@@ -341,23 +412,26 @@ public class CalendarService {
     }
 
     private Map<LocalDate, List<CalendarEventSummaryResponse>> expandEventsByDate(
-            List<CalendarEvent> events,
+            List<CalendarEventOccurrence> occurrences,
             LocalDate monthStart,
             LocalDate monthEnd,
             Long currentUserId
     ) {
         Map<LocalDate, List<CalendarEventSummaryResponse>> eventsByDate = new LinkedHashMap<>();
 
-        for (CalendarEvent event : events) {
-            LocalDate startDate = event.getStartsAt().toLocalDate().isBefore(monthStart)
+        for (CalendarEventOccurrence occurrence : occurrences) {
+            CalendarEvent event = occurrence.event();
+            LocalDate startDate = occurrence.startsAt().toLocalDate().isBefore(monthStart)
                     ? monthStart
-                    : event.getStartsAt().toLocalDate();
-            LocalDate endDate = event.getEndsAt().toLocalDate().isAfter(monthEnd)
+                    : occurrence.startsAt().toLocalDate();
+            LocalDate endDate = occurrence.endsAt().toLocalDate().isAfter(monthEnd)
                     ? monthEnd
-                    : event.getEndsAt().toLocalDate();
+                    : occurrence.endsAt().toLocalDate();
             CalendarEventSummaryResponse summary = CalendarEventSummaryResponse.from(
                     event,
-                    resolveViewType(event, currentUserId)
+                    resolveViewType(event, currentUserId),
+                    occurrence.startsAt(),
+                    occurrence.endsAt()
             );
 
             for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
@@ -367,6 +441,159 @@ public class CalendarService {
 
         eventsByDate.values().forEach(dayEvents -> dayEvents.sort(Comparator.comparing(CalendarEventSummaryResponse::startsAt)));
         return eventsByDate;
+    }
+
+    private List<CalendarEventOccurrence> expandOccurrences(
+            List<CalendarEvent> events,
+            LocalDateTime rangeStart,
+            LocalDateTime rangeEnd
+    ) {
+        return events.stream()
+                .flatMap(event -> expandOccurrences(event, rangeStart, rangeEnd).stream())
+                .sorted(Comparator
+                        .comparing(CalendarEventOccurrence::startsAt)
+                        .thenComparing(occurrence -> occurrence.event().getId()))
+                .toList();
+    }
+
+    private List<CalendarEventOccurrence> expandOccurrences(
+            CalendarEvent event,
+            LocalDateTime rangeStart,
+            LocalDateTime rangeEnd
+    ) {
+        if (!StringUtils.hasText(event.getRecurrenceRule())) {
+            return overlaps(event.getStartsAt(), event.getEndsAt(), rangeStart, rangeEnd)
+                    ? List.of(new CalendarEventOccurrence(event, event.getStartsAt(), event.getEndsAt()))
+                    : List.of();
+        }
+
+        RecurrenceRule rule = parseRecurrenceRule(event.getRecurrenceRule());
+        if (rule == null) {
+            return overlaps(event.getStartsAt(), event.getEndsAt(), rangeStart, rangeEnd)
+                    ? List.of(new CalendarEventOccurrence(event, event.getStartsAt(), event.getEndsAt()))
+                    : List.of();
+        }
+
+        Duration duration = Duration.between(event.getStartsAt(), event.getEndsAt());
+        List<CalendarEventOccurrence> occurrences = new ArrayList<>();
+        for (int index = 0; index < MAX_RECURRENCE_OCCURRENCES; index++) {
+            if (rule.count() != null && index >= rule.count()) {
+                break;
+            }
+
+            LocalDateTime occurrenceStart = addInterval(event.getStartsAt(), rule, index);
+            if (occurrenceStart.isAfter(rangeEnd)) {
+                break;
+            }
+            if (rule.until() != null && occurrenceStart.isAfter(rule.until())) {
+                break;
+            }
+
+            LocalDateTime occurrenceEnd = occurrenceStart.plus(duration);
+            if (overlaps(occurrenceStart, occurrenceEnd, rangeStart, rangeEnd)) {
+                occurrences.add(new CalendarEventOccurrence(event, occurrenceStart, occurrenceEnd));
+            }
+        }
+        return occurrences;
+    }
+
+    private boolean overlaps(
+            LocalDateTime startsAt,
+            LocalDateTime endsAt,
+            LocalDateTime rangeStart,
+            LocalDateTime rangeEnd
+    ) {
+        return !startsAt.isAfter(rangeEnd) && !endsAt.isBefore(rangeStart);
+    }
+
+    private LocalDateTime addInterval(LocalDateTime startsAt, RecurrenceRule rule, int index) {
+        int amount = rule.interval() * index;
+        return switch (rule.frequency()) {
+            case DAILY -> startsAt.plusDays(amount);
+            case WEEKLY -> startsAt.plusWeeks(amount);
+            case MONTHLY -> startsAt.plusMonths(amount);
+            case YEARLY -> startsAt.plusYears(amount);
+        };
+    }
+
+    private RecurrenceRule parseRecurrenceRule(String recurrenceRule) {
+        String normalizedRule = recurrenceRule.trim();
+        if (normalizedRule.startsWith("RRULE:")) {
+            normalizedRule = normalizedRule.substring("RRULE:".length());
+        }
+
+        Map<String, String> values = java.util.Arrays.stream(normalizedRule.split(";"))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .map(part -> part.split("=", 2))
+                .filter(parts -> parts.length == 2)
+                .collect(Collectors.toMap(
+                        parts -> parts[0].trim().toUpperCase(),
+                        parts -> parts[1].trim(),
+                        (left, right) -> right
+                ));
+        RecurrenceFrequency frequency = parseFrequency(values.get("FREQ"));
+        if (frequency == null) {
+            return null;
+        }
+
+        return new RecurrenceRule(
+                frequency,
+                parsePositiveInteger(values.get("INTERVAL"), 1),
+                parsePositiveInteger(values.get("COUNT"), null),
+                parseUntil(values.get("UNTIL"))
+        );
+    }
+
+    private RecurrenceFrequency parseFrequency(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        try {
+            return RecurrenceFrequency.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private Integer parsePositiveInteger(String value, Integer defaultValue) {
+        if (!StringUtils.hasText(value)) {
+            return defaultValue;
+        }
+
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed > 0 ? parsed : defaultValue;
+        } catch (NumberFormatException exception) {
+            return defaultValue;
+        }
+    }
+
+    private LocalDateTime parseUntil(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        String normalizedValue = value.trim();
+        List<DateTimeFormatter> formatters = List.of(
+                DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"),
+                DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"),
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME
+        );
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDateTime.parse(normalizedValue, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next supported recurrence UNTIL format.
+            }
+        }
+
+        try {
+            return OffsetDateTime.parse(normalizedValue).withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
     }
 
     private Map<LocalDate, MemoryCalendarDayResponse> getMemoryCalendarDays(
@@ -526,5 +753,23 @@ public class CalendarService {
     }
 
     private record EventOwnership(Long ownerId, CalendarEventVisibility visibility) {
+    }
+
+    private record CalendarEventOccurrence(CalendarEvent event, LocalDateTime startsAt, LocalDateTime endsAt) {
+    }
+
+    private record RecurrenceRule(
+            RecurrenceFrequency frequency,
+            int interval,
+            Integer count,
+            LocalDateTime until
+    ) {
+    }
+
+    private enum RecurrenceFrequency {
+        DAILY,
+        WEEKLY,
+        MONTHLY,
+        YEARLY
     }
 }

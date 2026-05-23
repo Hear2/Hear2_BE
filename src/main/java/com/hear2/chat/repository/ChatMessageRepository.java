@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
@@ -21,6 +22,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     List<ChatMessage> findTop20ByCoupleIdOrderByCreatedAtDesc(
             Long coupleId
     );
+
+    Optional<ChatMessage> findByIdAndCoupleId(Long id, Long coupleId);
 
     long countByCoupleId(Long coupleId);
 }

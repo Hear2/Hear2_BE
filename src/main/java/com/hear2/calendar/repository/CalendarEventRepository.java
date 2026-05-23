@@ -1,6 +1,7 @@
 package com.hear2.calendar.repository;
 
 import com.hear2.calendar.entity.CalendarEvent;
+import com.hear2.calendar.entity.CalendarExternalProvider;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +14,12 @@ public interface CalendarEventRepository extends JpaRepository<CalendarEvent, Lo
 
     Optional<CalendarEvent> findByIdAndCoupleId(Long id, Long coupleId);
 
+    Optional<CalendarEvent> findByCoupleIdAndExternalProviderAndExternalEventId(
+            Long coupleId,
+            CalendarExternalProvider externalProvider,
+            String externalEventId
+    );
+
     @Query("""
             select event
             from CalendarEvent event
@@ -22,6 +29,22 @@ public interface CalendarEventRepository extends JpaRepository<CalendarEvent, Lo
             order by event.startsAt asc, event.id asc
             """)
     List<CalendarEvent> findEventsInRange(
+            @Param("coupleId") Long coupleId,
+            @Param("rangeStart") LocalDateTime rangeStart,
+            @Param("rangeEnd") LocalDateTime rangeEnd
+    );
+
+    @Query("""
+            select event
+            from CalendarEvent event
+            where event.coupleId = :coupleId
+              and (
+                    (event.startsAt <= :rangeEnd and event.endsAt >= :rangeStart)
+                    or (event.recurrenceRule is not null and event.startsAt <= :rangeEnd)
+                  )
+            order by event.startsAt asc, event.id asc
+            """)
+    List<CalendarEvent> findEventCandidatesInRange(
             @Param("coupleId") Long coupleId,
             @Param("rangeStart") LocalDateTime rangeStart,
             @Param("rangeEnd") LocalDateTime rangeEnd

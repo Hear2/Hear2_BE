@@ -53,10 +53,13 @@ public class CalendarEventUpdateRequest {
     private List<@Size(max = 80) String> tags;
 
     @Size(max = 255)
+    @Schema(description = "반복 규칙. FREQ=DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT, UNTIL을 지원합니다.", example = "FREQ=WEEKLY;INTERVAL=1;COUNT=4")
     private String recurrenceRule;
 
     @Min(0)
+    @Schema(description = "알림 예정 분 단위. 현재는 저장/응답만 하고 FCM 발송은 후속 작업입니다.", example = "30")
     private Integer remindBeforeMinutes;
 
+    @Schema(description = "이 일정과 관련된 대표 채팅 메시지 ID. 같은 커플 메시지만 연결할 수 있습니다.")
     private Long linkedChatMessageId;
 }
