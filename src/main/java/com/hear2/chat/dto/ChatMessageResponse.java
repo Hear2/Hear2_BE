@@ -57,34 +57,34 @@ public class ChatMessageResponse {
     @Schema(description = "메시지 생성 시각", example = "2026-05-07T01:00:00")
     private LocalDateTime createdAt;
 
-    @Schema(description = "감정 유형", example = "HAPPY", allowableValues = {"HAPPY", "SAD", "ANGRY", "ANXIOUS", "NEUTRAL"})
+    @Schema(description = "감정 유형. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "HAPPY", allowableValues = {"HAPPY", "SAD", "ANGRY", "ANXIOUS", "NEUTRAL"}, nullable = true)
     private EmotionType emotionType;
 
-    @Schema(description = "감정 점수. 0.0부터 1.0까지의 값입니다.", example = "0.91")
+    @Schema(description = "감정 점수. 0.0부터 1.0까지의 값입니다. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "0.91", nullable = true)
     private Double emotionScore;
 
-    @Schema(description = "부정 감정 점수. 0.0부터 1.0까지의 값입니다.", example = "0.12")
+    @Schema(description = "부정 감정 점수. 0.0부터 1.0까지의 값입니다. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "0.12", nullable = true)
     private Double negativeScore;
 
-    @Schema(description = "말풍선 옆에 표시할 감정 이모지", example = "😊")
+    @Schema(description = "말풍선 옆에 표시할 감정 이모지. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "😊", nullable = true)
     private String emotionEmoji;
 
-    @Schema(description = "리스크 단계", example = "NONE", allowableValues = {"NONE", "CAUTION", "WARNING", "DANGER"})
+    @Schema(description = "리스크 단계. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "NONE", allowableValues = {"NONE", "CAUTION", "WARNING", "DANGER"}, nullable = true)
     private RiskLevel riskLevel;
 
-    @Schema(description = "리스크 감지 여부", example = "false")
+    @Schema(description = "리스크 감지 여부. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "false", nullable = true)
     private Boolean riskDetected;
 
-    @Schema(description = "리스크 감지 사유", example = "risk keyword detected")
+    @Schema(description = "리스크 감지 사유. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "risk keyword detected", nullable = true)
     private String riskReason;
 
-    @Schema(description = "감지된 위험 키워드 목록", example = "[\"가만 안 둬\"]")
+    @Schema(description = "감지된 위험 키워드 목록. 비동기 감정 분석 전이거나 분석 실패 시 null일 수 있습니다.", example = "[\"가만 안 둬\"]", nullable = true)
     private List<String> detectedRiskKeywords;
 
-    @Schema(description = "AI 판사 호출 버튼 노출 여부. WARNING/DANGER 리스크이거나 부정 감정 점수가 높을 때 true입니다.", example = "true")
+    @Schema(description = "AI 판사 호출 버튼 노출 여부. 감정 분석이 완료되면 WARNING/DANGER 리스크이거나 부정 감정 점수가 높을 때 true입니다. 분석 전/실패 시 false입니다.", example = "true")
     private Boolean judgeAvailable;
 
-    @Schema(description = "AI 판사 호출 시 triggerMessageId로 전달할 메시지 ID", example = "100")
+    @Schema(description = "AI 판사 호출 시 triggerMessageId로 전달할 메시지 ID. 감정 분석이 완료되어 AI 판사 호출 가능 조건을 만족할 때만 값이 채워집니다.", example = "100", nullable = true)
     private Long judgeTriggerMessageId;
 
     public static ChatMessageResponse from(ChatMessage message) {
