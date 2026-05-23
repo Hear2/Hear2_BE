@@ -1,5 +1,8 @@
 package com.hear2.memory.service;
 
+import com.hear2.character.repository.CharacterExpHistoryRepository;
+import com.hear2.character.service.CharacterService;
+import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.memory.dto.MemoryCreateRequest;
@@ -40,7 +43,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MemoryService {
 
+    private static final long MEMORY_EXP = 20L;
+    private static final long DAILY_MEMORY_EXP_LIMIT = 60L;
+
     private final MemoryRepository memoryRepository;
+    private final CharacterService characterService;
+    private final CharacterExpHistoryRepository characterExpHistoryRepository;
     private final MemoryPhotoStorageService memoryPhotoStorageService;
     private final MemoryAiAnalysisService memoryAiAnalysisService;
     private final MemoryPhotoMetadataExtractor memoryPhotoMetadataExtractor;
@@ -84,7 +92,10 @@ public class MemoryService {
         applyAiAnalysis(memory, sanitizedPhoto, request);
         applyUserTags(memory, request.getUserTags());
 
-        return MemoryResponse.from(memoryRepository.save(memory));
+        Memory savedMemory = memoryRepository.save(memory);
+        grantMemoryExp(coupleId, savedMemory.getId());
+
+        return MemoryResponse.from(savedMemory);
     }
 
     @Transactional
@@ -119,7 +130,10 @@ public class MemoryService {
         applyAiAnalysis(memory, request, resolvedLocation);
         applyUserTags(memory, request.getUserTags());
 
-        return MemoryQuickResponse.from(memoryRepository.save(memory));
+        Memory savedMemory = memoryRepository.save(memory);
+        grantMemoryExp(coupleId, savedMemory.getId());
+
+        return MemoryQuickResponse.from(savedMemory);
     }
 
     @Transactional(readOnly = true)
@@ -282,6 +296,26 @@ public class MemoryService {
         } else if (analysisResult.isFailed()) {
             memory.markAiAnalysisFailed();
         }
+    }
+
+    private void grantMemoryExp(Long coupleId, Long memoryId) {
+        long memoryExpToday = characterExpHistoryRepository.sumExpAmountByCoupleIdAndEarnedDateAndSourceType(
+                coupleId,
+                LocalDate.now(),
+                CharacterExpSourceType.MEMORY
+        );
+        long remainingMemoryExpToday = Math.max(DAILY_MEMORY_EXP_LIMIT - memoryExpToday, 0L);
+        long requestedExp = Math.min(MEMORY_EXP, remainingMemoryExpToday);
+        if (requestedExp <= 0) {
+            return;
+        }
+
+        characterService.grantExp(
+                coupleId,
+                CharacterExpSourceType.MEMORY,
+                "MEMORY:" + memoryId,
+                requestedExp
+        );
     }
 
     private void applyAiAnalysis(
