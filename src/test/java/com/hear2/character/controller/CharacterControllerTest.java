@@ -1,6 +1,7 @@
 package com.hear2.character.controller;
 
 import com.hear2.character.repository.CoupleCharacterRepository;
+import com.hear2.character.entity.CoupleCharacter;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
@@ -14,10 +15,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -103,6 +106,51 @@ class CharacterControllerTest {
                 .andExpect(jsonPath("$.stage").value(3));
 
         assertThat(coupleCharacterRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void updateCharacterNameChangesNameAndKeepsExpAndStage() throws Exception {
+        CoupleCharacter character = coupleCharacterRepository.save(CoupleCharacter.builder()
+                .coupleId(couple.getCoupleId())
+                .name("Before")
+                .exp(900L)
+                .build());
+
+        mockMvc.perform(patch("/api/v1/character/name")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Dubu\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.characterName").value("Dubu"))
+                .andExpect(jsonPath("$.exp").value(900))
+                .andExpect(jsonPath("$.stage").value(3));
+
+        assertThat(coupleCharacterRepository.count()).isEqualTo(1);
+        assertThat(coupleCharacterRepository.findByCoupleId(couple.getCoupleId()))
+                .hasValueSatisfying(updated -> {
+                    assertThat(updated.getCharacterId()).isEqualTo(character.getCharacterId());
+                    assertThat(updated.getName()).isEqualTo("Dubu");
+                    assertThat(updated.getExp()).isEqualTo(900L);
+                    assertThat(updated.getStage()).isEqualTo(3);
+                });
+    }
+
+    @Test
+    void updateCharacterNameRejectsBlankName() throws Exception {
+        mockMvc.perform(patch("/api/v1/character/name")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateCharacterNameRejectsNameOverTenCharacters() throws Exception {
+        mockMvc.perform(patch("/api/v1/character/name")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"abcdefghijk\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     private String bearerToken(Long userId) {

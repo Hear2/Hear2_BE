@@ -101,4 +101,8 @@ public class CoupleCharacter {
         }
         this.exp += expAmount;
     }
+
+    public void changeName(String name) {
+        this.name = name;
+    }
 }

@@ -1,6 +1,7 @@
 package com.hear2.character.service;
 
 import com.hear2.character.dto.CharacterExpGrantResult;
+import com.hear2.character.dto.CharacterNameUpdateRequest;
 import com.hear2.character.dto.CharacterResponse;
 import com.hear2.character.entity.CharacterExpHistory;
 import com.hear2.character.entity.CoupleCharacter;
@@ -33,6 +34,15 @@ public class CharacterService {
     public CharacterResponse getCharacter(Long userId) {
         Long coupleId = resolveCoupleId(userId);
         CoupleCharacter character = getOrCreateCharacter(coupleId);
+
+        return CharacterResponse.from(character);
+    }
+
+    @Transactional
+    public CharacterResponse updateCharacterName(Long userId, CharacterNameUpdateRequest request) {
+        Long coupleId = resolveCoupleId(userId);
+        CoupleCharacter character = getOrCreateCharacter(coupleId);
+        character.changeName(request.name());
 
         return CharacterResponse.from(character);
     }
