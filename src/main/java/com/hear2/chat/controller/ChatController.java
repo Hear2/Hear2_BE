@@ -4,6 +4,7 @@ import com.hear2.chat.dto.ChatMediaResponse;
 import com.hear2.chat.dto.ChatMessageRequest;
 import com.hear2.chat.dto.ChatMessageResponse;
 import com.hear2.chat.service.ChatMediaStorageService;
+import com.hear2.chat.service.ChatParticipantResolver;
 import com.hear2.chat.service.ChatService;
 import com.hear2.global.error.ApiErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +33,7 @@ public class ChatController {
 
     private final ChatService chatService;
     private final ChatMediaStorageService chatMediaStorageService;
+    private final ChatParticipantResolver chatParticipantResolver;
 
     @Operation(
             summary = "채팅 메시지 전송",
@@ -82,7 +84,7 @@ public class ChatController {
         return chatService.saveMessage(currentUserId(authentication), request);
     }
 
-    @Operation(summary = "채팅 미디어 업로드", description = "이미지 또는 동영상 파일을 업로드하고 채팅 메시지에서 사용할 미디어 정보를 반환합니다.")
+    @Operation(summary = "채팅 미디어 업로드", description = "이미지 또는 동영상 파일을 업로드하고 채팅 메시지에서 사용할 미디어 정보를 반환합니다. 업로드 전에 로그인 사용자와 커플 연결 상태를 먼저 검증하며, 커플이 연결되지 않은 사용자는 업로드를 진행할 수 없습니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "미디어 업로드 성공",
                     content = @Content(schema = @Schema(implementation = ChatMediaResponse.class))),
@@ -91,9 +93,11 @@ public class ChatController {
     })
     @PostMapping(value = "/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ChatMediaResponse uploadMedia(
+            Authentication authentication,
             @Parameter(description = "업로드할 이미지 또는 동영상 파일", required = true)
             @RequestParam("file") MultipartFile file
     ) {
+        chatParticipantResolver.resolve(currentUserId(authentication));
         return chatMediaStorageService.store(file);
     }
 

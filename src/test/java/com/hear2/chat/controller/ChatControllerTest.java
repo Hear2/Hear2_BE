@@ -2,6 +2,7 @@ package com.hear2.chat.controller;
 
 import com.hear2.chat.entity.ChatMessage;
 import com.hear2.chat.repository.ChatMessageRepository;
+import com.hear2.chat.service.ChatMediaStorageService;
 import com.hear2.character.repository.CharacterExpHistoryRepository;
 import com.hear2.character.service.CharacterService;
 import com.hear2.character.support.CharacterExpSourceType;
@@ -21,6 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,8 +31,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -63,12 +68,15 @@ class ChatControllerTest {
     @MockitoBean
     private CharacterExpHistoryRepository characterExpHistoryRepository;
 
+    @MockitoBean
+    private ChatMediaStorageService chatMediaStorageService;
+
     private User sender;
     private User receiver;
 
     @BeforeEach
     void setUp() {
-        reset(emotionAnalysisService, characterService, characterExpHistoryRepository);
+        reset(emotionAnalysisService, characterService, characterExpHistoryRepository, chatMediaStorageService);
         chatMessageRepository.deleteAll();
         coupleMemberRepository.deleteAll();
         userRepository.deleteAll();
@@ -135,6 +143,24 @@ class ChatControllerTest {
     }
 
     @Test
+    void uploadMediaRejectsUserWithoutCoupleBeforeStorageRuns() throws Exception {
+        coupleMemberRepository.deleteAll();
+        User disconnectedUser = userRepository.save(User.builder()
+                .email("chat-disconnected@example.com")
+                .password("encoded-password")
+                .nickname("disconnected")
+                .provider("LOCAL")
+                .build());
+
+        mockMvc.perform(multipart("/api/v1/chats/media")
+                        .file(mediaFile())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(disconnectedUser.getUserId())))
+                .andExpect(status().isNotFound());
+
+        verify(chatMediaStorageService, never()).store(any());
+    }
+
+    @Test
     void sendMessageStillSucceedsWhenEmotionAnalysisFails() throws Exception {
         doThrow(new RuntimeException("AI down"))
                 .when(emotionAnalysisService).analyzeAndSave(any(ChatMessage.class));
@@ -159,5 +185,14 @@ class ChatControllerTest {
 
     private String bearerToken(Long userId) {
         return "Bearer " + jwtProvider.createAccessToken(userId);
+    }
+
+    private MockMultipartFile mediaFile() {
+        return new MockMultipartFile(
+                "file",
+                "chat.png",
+                MediaType.IMAGE_PNG_VALUE,
+                new byte[] {1, 2, 3}
+        );
     }
 }
