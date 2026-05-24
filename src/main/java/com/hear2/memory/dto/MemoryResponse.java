@@ -29,6 +29,7 @@ public class MemoryResponse {
     private List<MemoryAiTagResponse> tags;
     private List<String> aiTags;
     private List<String> userTags;
+    private List<MemoryCommentResponse> comments;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -57,9 +58,16 @@ public class MemoryResponse {
                         .filter(tag -> tag.getSource() == MemoryTagSource.USER)
                         .map(tag -> "#" + tag.getTagName())
                         .toList())
+                .comments(List.of())
                 .createdAt(memory.getCreatedAt())
                 .updatedAt(memory.getUpdatedAt())
                 .build();
+    }
+
+    public static MemoryResponse from(Memory memory, List<MemoryCommentResponse> comments) {
+        MemoryResponse response = from(memory);
+        response.comments = comments == null ? List.of() : comments;
+        return response;
     }
 
     public static String resolvePhotoUrl(Memory memory) {

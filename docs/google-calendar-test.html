@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hear2 Google Calendar Test</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #20243f;
+      --muted: #71758b;
+      --line: #e6e8f0;
+      --soft: #f7f8fb;
+      --pink: #ff4f9a;
+      --pink-dark: #ef1d70;
+      --blue: #4e8ff7;
+      --green: #22a66a;
+      --danger: #d93838;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f2f3f7;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 32px auto 56px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 0.85fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(26, 31, 58, 0.06);
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: #4d5167;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 11px 12px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 144px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      line-height: 1.45;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--pink);
+      box-shadow: 0 0 0 3px rgba(255, 79, 154, 0.14);
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button,
+    a.button {
+      appearance: none;
+      border: 0;
+      border-radius: 8px;
+      padding: 11px 14px;
+      background: var(--pink);
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    button.secondary,
+    a.secondary {
+      background: #eef0f6;
+      color: var(--ink);
+    }
+
+    button.blue {
+      background: var(--blue);
+    }
+
+    button.green {
+      background: var(--green);
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    button:disabled,
+    a.button.disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .hint {
+      padding: 12px;
+      border-radius: 8px;
+      background: #fff4f9;
+      color: #7c3556;
+      font-size: 13px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #eef0f6;
+      color: #555a71;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .pill.ok {
+      background: #e8f7ef;
+      color: #13784d;
+    }
+
+    .pill.no {
+      background: #fff0f0;
+      color: #ac2d2d;
+    }
+
+    .result {
+      min-height: 360px;
+      margin: 0;
+      padding: 14px;
+      border-radius: 8px;
+      background: #1f2430;
+      color: #e9eefc;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .linkbox {
+      display: grid;
+      gap: 8px;
+    }
+
+    .linkbox a {
+      overflow-wrap: anywhere;
+      color: var(--pink-dark);
+      font-weight: 700;
+    }
+
+    @media (max-width: 860px) {
+      .grid,
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Google Calendar 연동 테스트</h1>
+      <p>로그인부터 연결, 일정 생성, Google 동기화, 월별 가져오기까지 한 화면에서 확인합니다.</p>
+    </div>
+    <span id="authStatus" class="pill no">토큰 없음</span>
+  </header>
+
+  <div class="grid">
+    <section class="stack">
+      <div class="card">
+        <h2>1. 서버와 로그인</h2>
+        <div class="row">
+          <label>
+            API Base URL
+            <input id="baseUrl" value="http://localhost:8080">
+          </label>
+          <label>
+            Access Token 직접 입력
+            <input id="tokenInput" placeholder="Bearer 없이 accessToken만 붙여넣기">
+          </label>
+        </div>
+        <div class="row" style="margin-top: 10px;">
+          <label>
+            이메일
+            <input id="email" value="user1@example.com" autocomplete="username">
+          </label>
+          <label>
+            비밀번호
+            <input id="password" value="string" type="password" autocomplete="current-password">
+          </label>
+        </div>
+        <div class="buttons" style="margin-top: 12px;">
+          <button type="button" onclick="login()">이메일 로그인</button>
+          <button type="button" class="secondary" onclick="getMe()">내 정보 확인</button>
+          <button type="button" class="secondary" onclick="saveManualToken()">토큰 저장</button>
+          <button type="button" class="secondary" onclick="clearToken()">토큰 지우기</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2. Google Calendar 연결</h2>
+        <p class="hint">연결 URL 발급 버튼을 누른 뒤 아래 링크를 열어 Google 권한 동의를 완료하세요. 콜백 화면에 성공 JSON이 뜨면 이 페이지로 돌아와 연결 상태 확인을 누르면 됩니다.</p>
+        <div class="buttons" style="margin-top: 12px;">
+          <button type="button" class="blue" onclick="getGoogleConnectUrl()">연결 URL 발급</button>
+          <button type="button" class="secondary" onclick="checkGoogleStatus()">연결 상태 확인</button>
+          <button type="button" class="danger" onclick="disconnectGoogle()">연결 해제</button>
+        </div>
+        <div id="connectLinkBox" class="linkbox" style="margin-top: 12px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>3. 앱 일정 생성</h2>
+        <div class="row" style="margin-bottom: 10px;">
+          <label>
+            장소 검색어
+            <input id="placeQuery" value="서울숲">
+          </label>
+          <label>
+            장소 검색 개수
+            <input id="placeSize" value="5" type="number" min="1" max="15">
+          </label>
+        </div>
+        <div class="buttons" style="margin-bottom: 12px;">
+          <button type="button" class="secondary" onclick="searchPlaces()">카카오 장소 검색</button>
+        </div>
+        <textarea id="eventBody">{
+  "title": "서울숲 데이트",
+  "target": "SHARED",
+  "startsAt": "2026-06-12T05:00:00Z",
+  "endsAt": "2026-06-12T10:00:00Z",
+  "allDay": false,
+  "locationName": "서울숲",
+  "addressName": "서울시 성동구 서울숲길 273",
+  "latitude": 37.5444,
+  "longitude": 127.0374,
+  "memo": "벚꽃 보고 카페 들르기",
+  "tags": ["데이트", "봄"],
+  "recurrenceRule": "FREQ=WEEKLY;INTERVAL=1;COUNT=4",
+  "remindBeforeMinutes": 30,
+  "linkedChatMessageId": null,
+  "memoryIds": []
+}</textarea>
+        <div class="buttons" style="margin-top: 12px;">
+          <button type="button" class="green" onclick="createCalendarEvent()">일정 생성</button>
+          <button type="button" class="secondary" onclick="loadSampleEvent()">예시 다시 넣기</button>
+        </div>
+        <p class="small" style="margin-top: 8px;">일정 생성 성공 시 eventId가 자동 저장됩니다.</p>
+      </div>
+
+      <div class="card">
+        <h2>4. 조회와 Google 동기화</h2>
+        <div class="row">
+          <label>
+            Event ID
+            <input id="eventId" placeholder="일정 생성 후 자동 입력">
+          </label>
+          <label>
+            조회/가져오기 년월
+            <input id="yearMonth" value="2026-06" type="month">
+          </label>
+        </div>
+        <div class="row" style="margin-top: 10px;">
+          <label>
+            날짜 상세
+            <input id="detailDate" value="2026-06-12" type="date">
+          </label>
+          <label>
+            Upcoming limit
+            <input id="upcomingLimit" value="5" type="number" min="1">
+          </label>
+        </div>
+        <div class="row" style="margin-top: 10px;">
+          <label>
+            연결할 채팅 Message ID
+            <input id="chatMessageId" placeholder="같은 커플의 채팅 메시지 ID">
+          </label>
+          <label>
+            반복 예시
+            <select id="recurrencePreset" onchange="applyRecurrencePreset()">
+              <option value="">반복 없음</option>
+              <option value="FREQ=DAILY;INTERVAL=1;COUNT=5">매일 5번</option>
+              <option value="FREQ=WEEKLY;INTERVAL=1;COUNT=4" selected>매주 4번</option>
+              <option value="FREQ=MONTHLY;INTERVAL=1;COUNT=3">매월 3번</option>
+              <option value="FREQ=YEARLY;INTERVAL=1;COUNT=2">매년 2번</option>
+            </select>
+          </label>
+        </div>
+        <div class="buttons" style="margin-top: 12px;">
+          <button type="button" onclick="getMonth()">월별 조회</button>
+          <button type="button" onclick="getDateDetail()">날짜 상세</button>
+          <button type="button" onclick="getUpcoming()">다가오는 일정</button>
+          <button type="button" class="secondary" onclick="linkChatMessage()">채팅 연결</button>
+          <button type="button" class="secondary" onclick="unlinkChatMessage()">채팅 연결 해제</button>
+          <button type="button" class="blue" onclick="syncEvent()">Google로 동기화</button>
+          <button type="button" class="green" onclick="importGoogleEvents()">Google 일정 가져오기</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="stack">
+      <div class="card">
+        <h2>현재 저장값</h2>
+        <p><strong>User ID:</strong> <span id="userIdText">-</span></p>
+        <p><strong>Event ID:</strong> <span id="eventIdText">-</span></p>
+        <p><strong>Google:</strong> <span id="googleText">확인 전</span></p>
+        <p><strong>JWT:</strong> <span id="jwtText">-</span></p>
+      </div>
+
+      <div class="card">
+        <h2>응답</h2>
+        <pre id="result" class="result">아직 요청 전입니다.</pre>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script>
+  const storageKeys = {
+    baseUrl: "hear2CalendarBaseUrl",
+    token: "hear2CalendarAccessToken",
+    userId: "hear2CalendarUserId",
+    eventId: "hear2CalendarEventId"
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function init() {
+    $("baseUrl").value = localStorage.getItem(storageKeys.baseUrl) || $("baseUrl").value;
+    $("tokenInput").value = localStorage.getItem(storageKeys.token) || "";
+    $("eventId").value = localStorage.getItem(storageKeys.eventId) || "";
+    renderSavedState();
+  }
+
+  function baseUrl() {
+    const value = $("baseUrl").value.replace(/\/+$/, "");
+    localStorage.setItem(storageKeys.baseUrl, value);
+    return value;
+  }
+
+  function token() {
+    return normalizeToken(localStorage.getItem(storageKeys.token) || $("tokenInput").value);
+  }
+
+  function normalizeToken(value) {
+    return (value || "").trim().replace(/^Bearer\s+/i, "").replace(/\s+/g, "");
+  }
+
+  function authHeaders() {
+    const accessToken = token();
+    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  }
+
+  function renderSavedState() {
+    const accessToken = token();
+    const userId = localStorage.getItem(storageKeys.userId) || "-";
+    const eventId = localStorage.getItem(storageKeys.eventId) || $("eventId").value || "-";
+
+    $("authStatus").textContent = accessToken ? `토큰 있음 (${accessToken.length}자)` : "토큰 없음";
+    $("authStatus").className = accessToken ? "pill ok" : "pill no";
+    $("userIdText").textContent = userId;
+    $("eventIdText").textContent = eventId;
+    $("jwtText").textContent = accessToken ? summarizeJwt(accessToken) : "-";
+  }
+
+  function print(title, payload) {
+    $("result").textContent = `${title}\n\n${JSON.stringify(toPrintable(payload), null, 2)}`;
+  }
+
+  window.addEventListener("error", (event) => {
+    print("화면 JavaScript 오류", {
+      message: event.message,
+      filename: event.filename,
+      line: event.lineno,
+      column: event.colno
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    print("화면 비동기 오류", event.reason);
+  });
+
+  function toPrintable(payload) {
+    if (payload instanceof Error) {
+      return {
+        name: payload.name,
+        message: payload.message,
+        stack: payload.stack
+      };
+    }
+
+    return payload;
+  }
+
+  function requireToken() {
+    const accessToken = token();
+    if (!accessToken) {
+      throw new Error("accessToken이 없습니다. 먼저 이메일 로그인 또는 토큰 저장을 해 주세요.");
+    }
+    return accessToken;
+  }
+
+  function responseData(body) {
+    return body?.data || body;
+  }
+
+  function tokenPreview() {
+    const accessToken = token();
+    if (!accessToken) {
+      return null;
+    }
+
+    return `${accessToken.slice(0, 16)}...${accessToken.slice(-10)} (${accessToken.length}자)`;
+  }
+
+  function summarizeJwt(accessToken) {
+    try {
+      const payload = JSON.parse(atob(accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      const expiresAt = payload.exp
+        ? new Date(payload.exp * 1000).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+        : "없음";
+      return `sub=${payload.sub || "-"}, type=${payload.token_type || "-"}, exp=${expiresAt}`;
+    } catch (error) {
+      return "JWT payload 해석 실패";
+    }
+  }
+
+  async function request(path, options = {}) {
+    const publicRequest = path.startsWith("/api/v1/auth/login");
+    if (!publicRequest) {
+      requireToken();
+    }
+
+    const headers = {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(publicRequest ? {} : authHeaders()),
+      ...(options.headers || {})
+    };
+
+    const response = await fetch(`${baseUrl()}${path}`, {
+      ...options,
+      headers
+    });
+
+    const text = await response.text();
+    let body = text;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch (error) {
+      body = text;
+    }
+
+    if (!response.ok) {
+      throw {
+        status: response.status,
+        request: {
+          method: options.method || "GET",
+          path,
+          authorizationAttached: Boolean(headers.Authorization),
+          tokenPreview: tokenPreview()
+        },
+        body
+      };
+    }
+
+    return body;
+  }
+
+  async function login() {
+    try {
+      const body = await request("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: $("email").value,
+          password: $("password").value
+        }),
+        headers: {}
+      });
+
+      const data = responseData(body);
+      const accessToken = data?.token?.accessToken;
+      if (accessToken) {
+        const normalizedAccessToken = normalizeToken(accessToken);
+        localStorage.setItem(storageKeys.token, normalizedAccessToken);
+        $("tokenInput").value = normalizedAccessToken;
+      }
+      if (data?.userId) {
+        localStorage.setItem(storageKeys.userId, data.userId);
+      }
+
+      renderSavedState();
+      print("로그인 성공", {
+        tokenSaved: Boolean(accessToken),
+        tokenPreview: tokenPreview(),
+        response: body
+      });
+    } catch (error) {
+      print("로그인 실패", error);
+    }
+  }
+
+  function saveManualToken() {
+    const value = normalizeToken($("tokenInput").value);
+    $("tokenInput").value = value;
+    localStorage.setItem(storageKeys.token, value);
+    renderSavedState();
+    print("토큰 저장", { saved: Boolean(value) });
+  }
+
+  function clearToken() {
+    localStorage.removeItem(storageKeys.token);
+    localStorage.removeItem(storageKeys.userId);
+    $("tokenInput").value = "";
+    renderSavedState();
+    print("토큰 삭제", { deleted: true });
+  }
+
+  async function getMe() {
+    try {
+      const body = await request("/api/v1/auth/me");
+      const data = responseData(body);
+      if (data?.userId) {
+        localStorage.setItem(storageKeys.userId, data.userId);
+      }
+      renderSavedState();
+      print("내 정보 확인 성공", body);
+    } catch (error) {
+      print("내 정보 확인 실패", error);
+    }
+  }
+
+  async function getGoogleConnectUrl() {
+    try {
+      const body = await request("/api/v1/calendar/google/connect");
+      const authorizationUrl = body?.data?.authorizationUrl;
+      $("connectLinkBox").innerHTML = authorizationUrl
+        ? `<a class="button" href="${authorizationUrl}" target="_blank" rel="noreferrer">Google 동의 화면 열기</a><a href="${authorizationUrl}" target="_blank" rel="noreferrer">${authorizationUrl}</a>`
+        : "";
+      print("Google Calendar 연결 URL", body);
+    } catch (error) {
+      print("Google Calendar 연결 URL 실패", error);
+    }
+  }
+
+  async function checkGoogleStatus() {
+    try {
+      const body = await request("/api/v1/calendar/google/status");
+      const data = body?.data;
+      $("googleText").textContent = data?.connected ? `연결됨 (${data.calendarId || "primary"})` : "연결 안 됨";
+      print("Google Calendar 연결 상태", body);
+    } catch (error) {
+      print("Google Calendar 연결 상태 실패", error);
+    }
+  }
+
+  async function disconnectGoogle() {
+    try {
+      const body = await request("/api/v1/calendar/google/disconnect", { method: "DELETE" });
+      $("googleText").textContent = "연결 해제됨";
+      print("Google Calendar 연결 해제", body);
+    } catch (error) {
+      print("Google Calendar 연결 해제 실패", error);
+    }
+  }
+
+  async function createCalendarEvent() {
+    try {
+      const me = await request("/api/v1/auth/me");
+      const parsed = JSON.parse($("eventBody").value);
+      const body = await request("/api/v1/calendar/events", {
+        method: "POST",
+        body: JSON.stringify(parsed)
+      });
+
+      const eventId = body?.data?.id;
+      if (eventId) {
+        localStorage.setItem(storageKeys.eventId, eventId);
+        $("eventId").value = eventId;
+      }
+
+      renderSavedState();
+      print("일정 생성 성공", {
+        authCheck: me,
+        event: body
+      });
+    } catch (error) {
+      print("일정 생성 실패", error);
+    }
+  }
+
+  function loadSampleEvent() {
+    $("eventBody").value = `{
+  "title": "서울숲 데이트",
+  "target": "SHARED",
+  "startsAt": "2026-06-12T05:00:00Z",
+  "endsAt": "2026-06-12T10:00:00Z",
+  "allDay": false,
+  "locationName": "서울숲",
+  "addressName": "서울시 성동구 서울숲길 273",
+  "latitude": 37.5444,
+  "longitude": 127.0374,
+  "memo": "벚꽃 보고 카페 들르기",
+  "tags": ["데이트", "봄"],
+  "recurrenceRule": "FREQ=WEEKLY;INTERVAL=1;COUNT=4",
+  "remindBeforeMinutes": 30,
+  "linkedChatMessageId": null,
+  "memoryIds": []
+}`;
+    print("예시 입력 완료", JSON.parse($("eventBody").value));
+  }
+
+  async function searchPlaces() {
+    try {
+      const query = encodeURIComponent($("placeQuery").value);
+      const size = Number($("placeSize").value || 5);
+      const body = await request(`/api/v1/calendar/places/search?query=${query}&size=${size}`);
+      print("카카오 장소 검색 성공", body);
+    } catch (error) {
+      print("카카오 장소 검색 실패", error);
+    }
+  }
+
+  function applyRecurrencePreset() {
+    try {
+      const parsed = JSON.parse($("eventBody").value);
+      parsed.recurrenceRule = $("recurrencePreset").value || null;
+      $("eventBody").value = JSON.stringify(parsed, null, 2);
+      print("반복 규칙 적용", parsed);
+    } catch (error) {
+      print("반복 규칙 적용 실패", error);
+    }
+  }
+
+  function selectedYearMonth() {
+    const [year, month] = $("yearMonth").value.split("-").map(Number);
+    return { year, month };
+  }
+
+  async function getMonth() {
+    try {
+      const { year, month } = selectedYearMonth();
+      const body = await request(`/api/v1/calendar/month?year=${year}&month=${month}`);
+      print("월별 조회 성공", body);
+    } catch (error) {
+      print("월별 조회 실패", error);
+    }
+  }
+
+  async function getDateDetail() {
+    try {
+      const body = await request(`/api/v1/calendar/dates/${$("detailDate").value}`);
+      print("날짜 상세 조회 성공", body);
+    } catch (error) {
+      print("날짜 상세 조회 실패", error);
+    }
+  }
+
+  async function getUpcoming() {
+    try {
+      const limit = Number($("upcomingLimit").value || 5);
+      const body = await request(`/api/v1/calendar/upcoming?limit=${limit}`);
+      print("다가오는 일정 조회 성공", body);
+    } catch (error) {
+      print("다가오는 일정 조회 실패", error);
+    }
+  }
+
+  async function syncEvent() {
+    try {
+      const eventId = $("eventId").value || localStorage.getItem(storageKeys.eventId);
+      if (!eventId) {
+        throw { message: "eventId가 없습니다. 먼저 일정을 생성하거나 eventId를 입력하세요." };
+      }
+
+      const body = await request(`/api/v1/calendar/events/${eventId}/google/sync`, { method: "POST" });
+      print("Google Calendar 수동 동기화 성공", body);
+    } catch (error) {
+      print("Google Calendar 수동 동기화 실패", error);
+    }
+  }
+
+  async function linkChatMessage() {
+    try {
+      const eventId = $("eventId").value || localStorage.getItem(storageKeys.eventId);
+      const messageId = $("chatMessageId").value;
+      if (!eventId || !messageId) {
+        throw { message: "eventId와 messageId가 모두 필요합니다." };
+      }
+
+      const body = await request(`/api/v1/calendar/events/${eventId}/chat-messages/${messageId}`, { method: "POST" });
+      print("채팅 메시지 연결 성공", body);
+    } catch (error) {
+      print("채팅 메시지 연결 실패", error);
+    }
+  }
+
+  async function unlinkChatMessage() {
+    try {
+      const eventId = $("eventId").value || localStorage.getItem(storageKeys.eventId);
+      if (!eventId) {
+        throw { message: "eventId가 없습니다." };
+      }
+
+      const body = await request(`/api/v1/calendar/events/${eventId}/chat-message`, { method: "DELETE" });
+      print("채팅 메시지 연결 해제 성공", body);
+    } catch (error) {
+      print("채팅 메시지 연결 해제 실패", error);
+    }
+  }
+
+  async function importGoogleEvents() {
+    try {
+      const { year, month } = selectedYearMonth();
+      const body = await request(`/api/v1/calendar/google/import?year=${year}&month=${month}`, { method: "POST" });
+      print("Google Calendar 일정 가져오기 성공", body);
+    } catch (error) {
+      print("Google Calendar 일정 가져오기 실패", error);
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

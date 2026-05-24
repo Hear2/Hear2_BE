@@ -98,6 +98,11 @@ kakao:
 google:
   oauth:
     client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+    client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+  calendar:
+    redirect-uri: ${GOOGLE_CALENDAR_REDIRECT_URI:http://localhost:8080/api/v1/calendar/google/callback}
+    connect-success-url: ${GOOGLE_CALENDAR_CONNECT_SUCCESS_URL:}
+    oauth-state-expiration-minutes: ${GOOGLE_CALENDAR_OAUTH_STATE_EXPIRATION_MINUTES:10}
 
 server:
   port: ${PORT:8080}

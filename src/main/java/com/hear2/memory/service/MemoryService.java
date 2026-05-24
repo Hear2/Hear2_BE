@@ -8,6 +8,8 @@ import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.memory.dto.MemoryCreateRequest;
 import com.hear2.memory.dto.MemoryCalendarDayResponse;
 import com.hear2.memory.dto.MemoryCalendarResponse;
+import com.hear2.memory.dto.MemoryCommentCreateRequest;
+import com.hear2.memory.dto.MemoryCommentResponse;
 import com.hear2.memory.dto.MemoryImageTagRequest;
 import com.hear2.memory.dto.MemoryImageTagResponse;
 import com.hear2.memory.dto.MemoryQuickCreateRequest;
@@ -18,8 +20,12 @@ import com.hear2.memory.dto.MemoryUpdateRequest;
 import com.hear2.memory.dto.MemoryYearAgoResponse;
 import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiTag;
+import com.hear2.memory.entity.MemoryComment;
 import com.hear2.memory.entity.MemoryPhotoMetadata;
+import com.hear2.memory.repository.MemoryCommentRepository;
 import com.hear2.memory.repository.MemoryRepository;
+import com.hear2.user.entity.User;
+import com.hear2.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -55,6 +61,8 @@ public class MemoryService {
     private final MemoryPhotoSanitizer memoryPhotoSanitizer;
     private final KakaoLocalService kakaoLocalService;
     private final CoupleMemberRepository coupleMemberRepository;
+    private final MemoryCommentRepository memoryCommentRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public MemoryResponse createMemory(MultipartFile photo, MemoryCreateRequest request, Long currentUserId) {
@@ -235,7 +243,8 @@ public class MemoryService {
     @Transactional(readOnly = true)
     public MemoryResponse getMemory(Long memoryId, Long currentUserId) {
         Long coupleId = resolveCoupleId(currentUserId);
-        return MemoryResponse.from(findMemory(coupleId, memoryId));
+        Memory memory = findMemory(coupleId, memoryId);
+        return MemoryResponse.from(memory, buildCommentResponses(coupleId, memoryId));
     }
 
     @Transactional(readOnly = true)
@@ -284,7 +293,54 @@ public class MemoryService {
         Memory memory = findMemory(coupleId, memoryId);
 
         memoryPhotoStorageService.delete(memory.getStoredPhotoPath());
+        memoryCommentRepository.deleteByCoupleIdAndMemoryId(coupleId, memoryId);
         memoryRepository.delete(memory);
+    }
+
+    @Transactional
+    public MemoryCommentResponse createComment(
+            Long memoryId,
+            MemoryCommentCreateRequest request,
+            Long currentUserId
+    ) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "comment request is required");
+        }
+
+        Long coupleId = resolveCoupleId(currentUserId);
+        findMemory(coupleId, memoryId);
+
+        MemoryComment comment = memoryCommentRepository.save(MemoryComment.builder()
+                .coupleId(coupleId)
+                .memoryId(memoryId)
+                .writerId(currentUserId)
+                .content(normalizeRequired(request.getContent(), "content is required"))
+                .build());
+
+        return MemoryCommentResponse.from(comment, resolveNickname(currentUserId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<MemoryCommentResponse> getComments(Long memoryId, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
+        findMemory(coupleId, memoryId);
+
+        return buildCommentResponses(coupleId, memoryId);
+    }
+
+    @Transactional
+    public void deleteComment(Long memoryId, Long commentId, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
+        findMemory(coupleId, memoryId);
+        MemoryComment comment = memoryCommentRepository
+                .findByIdAndCoupleIdAndMemoryId(commentId, coupleId, memoryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "comment not found"));
+
+        if (!comment.getWriterId().equals(currentUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "only comment writer can delete comment");
+        }
+
+        memoryCommentRepository.delete(comment);
     }
 
     private void applyAiAnalysis(Memory memory, MemoryPhotoFile photo, MemoryCreateRequest request) {
@@ -415,6 +471,37 @@ public class MemoryService {
         return member.getCoupleId();
     }
 
+    private List<MemoryCommentResponse> buildCommentResponses(Long coupleId, Long memoryId) {
+        List<MemoryComment> comments = memoryCommentRepository.findByCoupleIdAndMemoryIdOrderByCreatedAtAsc(
+                coupleId,
+                memoryId
+        );
+        Map<Long, String> nicknamesByUserId = userRepository.findAllById(comments
+                        .stream()
+                        .map(MemoryComment::getWriterId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        User::getUserId,
+                        user -> StringUtils.hasText(user.getNickname()) ? user.getNickname() : "알 수 없음"
+                ));
+
+        return comments.stream()
+                .map(comment -> MemoryCommentResponse.from(
+                        comment,
+                        nicknamesByUserId.getOrDefault(comment.getWriterId(), "알 수 없음")
+                ))
+                .toList();
+    }
+
+    private String resolveNickname(Long userId) {
+        return userRepository.findById(userId)
+                .map(User::getNickname)
+                .filter(StringUtils::hasText)
+                .orElse("알 수 없음");
+    }
+
     private LocalDate resolveMemoryDate(LocalDateTime takenAt) {
         if (takenAt == null) {
             return LocalDate.now();
@@ -498,6 +585,15 @@ public class MemoryService {
 
     private String normalizeMemo(String memo) {
         return StringUtils.hasText(memo) ? memo.trim() : null;
+    }
+
+    private String normalizeRequired(String value, String message) {
+        String normalized = normalizeMemo(value);
+        if (!StringUtils.hasText(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
+
+        return normalized;
     }
 
     private String resolveStoredPhotoReference(MemoryQuickCreateRequest request) {
