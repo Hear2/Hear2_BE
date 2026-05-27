@@ -85,6 +85,7 @@ kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
   local:
     radius-meters: ${KAKAO_LOCAL_RADIUS_METERS:1000}
+    place-max-distance-meters: ${KAKAO_LOCAL_PLACE_MAX_DISTANCE_METERS:100}
 
 google:
   oauth:

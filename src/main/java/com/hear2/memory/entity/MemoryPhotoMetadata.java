@@ -72,4 +72,18 @@ public class MemoryPhotoMetadata {
     public void assignMemory(Memory memory) {
         this.memory = memory;
     }
+
+    public void updateLocation(
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String locationName,
+            String placeName,
+            String addressName
+    ) {
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.locationName = locationName;
+        this.placeName = placeName;
+        this.addressName = addressName;
+    }
 }

@@ -93,7 +93,7 @@ public class MemoryService {
         Long coupleId = resolveCoupleId(currentUserId);
 
         LocalDateTime capturedAt = toLocalDateTime(request.getCapturedAt());
-        ResolvedMemoryLocation resolvedLocation = resolveLocation(null, request.getLat(), request.getLng());
+        ResolvedMemoryLocation resolvedLocation = resolveLocation(request.getLocationName(), request.getLat(), request.getLng());
         MemoryPhotoStorageResult referencedPhoto = memoryPhotoStorageService.referenceExternal(resolveStoredPhotoReference(request));
 
         Memory memory = Memory.builder()
@@ -257,6 +257,9 @@ public class MemoryService {
         Long coupleId = resolveCoupleId(currentUserId);
         Memory memory = findMemory(coupleId, memoryId);
         memory.updateMemo(normalizeMemo(request.getNote()));
+        if (hasLocationUpdate(request)) {
+            updateQuickMemoryLocation(memory, request);
+        }
         if (request.getUserTags() != null) {
             applyUserTags(memory, request.getUserTags());
         }
@@ -427,12 +430,21 @@ public class MemoryService {
             BigDecimal latitude,
             BigDecimal longitude
     ) {
-        String requestedLocationName = request == null ? null : normalizeLocationName(request.getLocationName());
+        String requestedLocationName = request == null ? null : request.getLocationName();
+        return resolveLocation(requestedLocationName, latitude, longitude);
+    }
+
+    private ResolvedMemoryLocation resolveLocation(
+            String requestedLocationName,
+            BigDecimal latitude,
+            BigDecimal longitude
+    ) {
+        String normalizedLocationName = normalizeLocationName(requestedLocationName);
         KakaoLocationNames kakaoLocationNames = kakaoLocalService.resolveLocationNames(latitude, longitude);
         String addressName = kakaoLocationNames == null ? null : kakaoLocationNames.addressName();
 
-        if (requestedLocationName != null) {
-            return new ResolvedMemoryLocation(requestedLocationName, requestedLocationName, addressName);
+        if (normalizedLocationName != null) {
+            return new ResolvedMemoryLocation(normalizedLocationName, normalizedLocationName, addressName);
         }
 
         if (kakaoLocationNames == null) {
@@ -443,6 +455,44 @@ public class MemoryService {
                 kakaoLocationNames.displayName(),
                 kakaoLocationNames.placeName(),
                 kakaoLocationNames.addressName()
+        );
+    }
+
+    private boolean hasLocationUpdate(MemoryQuickUpdateRequest request) {
+        return request.getLocationName() != null || request.getLat() != null || request.getLng() != null;
+    }
+
+    private void updateQuickMemoryLocation(Memory memory, MemoryQuickUpdateRequest request) {
+        MemoryPhotoMetadata metadata = memory.getPhotoMetadata();
+        BigDecimal latitude = request.getLat() != null
+                ? request.getLat()
+                : metadata == null ? null : metadata.getLatitude();
+        BigDecimal longitude = request.getLng() != null
+                ? request.getLng()
+                : metadata == null ? null : metadata.getLongitude();
+        String requestedLocationName = request.getLocationName() != null
+                ? request.getLocationName()
+                : metadata == null ? null : metadata.getLocationName();
+        ResolvedMemoryLocation resolvedLocation = resolveLocation(requestedLocationName, latitude, longitude);
+
+        if (metadata == null) {
+            memory.attachPhotoMetadata(MemoryPhotoMetadata.create(
+                    null,
+                    latitude,
+                    longitude,
+                    resolvedLocation.locationName(),
+                    resolvedLocation.placeName(),
+                    resolvedLocation.addressName()
+            ));
+            return;
+        }
+
+        metadata.updateLocation(
+                latitude,
+                longitude,
+                resolvedLocation.locationName(),
+                resolvedLocation.placeName(),
+                resolvedLocation.addressName()
         );
     }
 
