@@ -17,35 +17,20 @@ public class KakaoLocalService {
 
     private static final String KAKAO_AUTH_PREFIX = "KakaoAK ";
     private static final String COORD_TO_ADDRESS_PATH = "/v2/local/geo/coord2address.json";
-    private static final String CATEGORY_SEARCH_PATH = "/v2/local/search/category.json";
-    private static final String SORT_BY_DISTANCE = "distance";
-    private static final int DEFAULT_PLACE_MAX_DISTANCE_METERS = 100;
-    private static final String[] PLACE_CATEGORY_GROUP_CODES = {
-            "AT4", "CT1", "SC4", "FD6", "CE7", "AD5", "MT1", "CS2",
-            "PK6", "SW8", "BK9", "HP8", "PM9", "PO3", "AC5", "AG2"
-    };
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String restApiKey;
-    private final int radiusMeters;
-    private final int placeMaxDistanceMeters;
 
     public KakaoLocalService(
             ObjectMapper objectMapper,
-            @Value("${kakao.rest-api-key:}") String restApiKey,
-            @Value("${kakao.local.radius-meters:1000}") int radiusMeters,
-            @Value("${kakao.local.place-max-distance-meters:100}") int placeMaxDistanceMeters
+            @Value("${kakao.rest-api-key:}") String restApiKey
     ) {
         this.restClient = RestClient.builder()
                 .baseUrl("https://dapi.kakao.com")
                 .build();
         this.objectMapper = objectMapper;
         this.restApiKey = restApiKey;
-        this.radiusMeters = radiusMeters;
-        this.placeMaxDistanceMeters = placeMaxDistanceMeters <= 0
-                ? DEFAULT_PLACE_MAX_DISTANCE_METERS
-                : placeMaxDistanceMeters;
     }
 
     public String resolveLocationName(BigDecimal latitude, BigDecimal longitude) {
@@ -58,20 +43,19 @@ public class KakaoLocalService {
             return null;
         }
 
-        String addressName = resolveAddressName(latitude, longitude);
-        String placeName = resolvePlaceName(latitude, longitude);
+        String addressName = resolveDongAddressName(latitude, longitude);
 
-        if (!StringUtils.hasText(placeName) && !StringUtils.hasText(addressName)) {
+        if (!StringUtils.hasText(addressName)) {
             return null;
         }
 
         return new KakaoLocationNames(
-                StringUtils.hasText(placeName) ? placeName : null,
+                null,
                 StringUtils.hasText(addressName) ? addressName : null
         );
     }
 
-    private String resolveAddressName(BigDecimal latitude, BigDecimal longitude) {
+    private String resolveDongAddressName(BigDecimal latitude, BigDecimal longitude) {
         try {
             String response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -83,68 +67,14 @@ public class KakaoLocalService {
                     .retrieve()
                     .body(String.class);
 
-            return parseAddressName(response);
+            return parseDongAddressName(response);
         } catch (RuntimeException e) {
             log.warn("Failed to resolve Kakao address name: {}", e.getMessage());
             return null;
         }
     }
 
-    private String resolvePlaceName(BigDecimal latitude, BigDecimal longitude) {
-        KakaoPlaceCandidate nearestCandidate = null;
-        for (String categoryGroupCode : PLACE_CATEGORY_GROUP_CODES) {
-            KakaoPlaceCandidate candidate = resolvePlaceCandidate(latitude, longitude, categoryGroupCode);
-            if (candidate == null) {
-                continue;
-            }
-            if (nearestCandidate == null || candidate.distanceMeters() < nearestCandidate.distanceMeters()) {
-                nearestCandidate = candidate;
-            }
-        }
-
-        if (nearestCandidate == null) {
-            return null;
-        }
-        if (nearestCandidate.distanceMeters() > placeMaxDistanceMeters) {
-            log.debug(
-                    "Kakao place candidate ignored because it is too far. placeName={}, distanceMeters={}, maxDistanceMeters={}",
-                    nearestCandidate.placeName(),
-                    nearestCandidate.distanceMeters(),
-                    placeMaxDistanceMeters
-            );
-            return null;
-        }
-
-        return nearestCandidate.placeName();
-    }
-
-    private KakaoPlaceCandidate resolvePlaceCandidate(
-            BigDecimal latitude,
-            BigDecimal longitude,
-            String categoryGroupCode
-    ) {
-        try {
-            String response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path(CATEGORY_SEARCH_PATH)
-                            .queryParam("category_group_code", categoryGroupCode)
-                            .queryParam("x", longitude)
-                            .queryParam("y", latitude)
-                            .queryParam("radius", radiusMeters)
-                            .queryParam("sort", SORT_BY_DISTANCE)
-                            .build())
-                    .header(HttpHeaders.AUTHORIZATION, KAKAO_AUTH_PREFIX + restApiKey)
-                    .retrieve()
-                    .body(String.class);
-
-            return parsePlaceCandidate(response);
-        } catch (RuntimeException e) {
-            log.warn("Failed to resolve Kakao place name: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String parseAddressName(String response) {
+    private String parseDongAddressName(String response) {
         if (!StringUtils.hasText(response)) {
             return null;
         }
@@ -157,56 +87,47 @@ public class KakaoLocalService {
             }
 
             JsonNode firstDocument = documents.get(0);
-            String roadAddress = firstDocument.path("road_address").path("address_name").asString("");
-            if (StringUtils.hasText(roadAddress)) {
-                return roadAddress;
+            String dongAddressName = formatDongAddress(firstDocument.path("address"));
+            if (StringUtils.hasText(dongAddressName)) {
+                return dongAddressName;
             }
 
-            String address = firstDocument.path("address").path("address_name").asString("");
-            return StringUtils.hasText(address) ? address : null;
+            String addressName = firstDocument.path("address").path("address_name").asString("");
+            return trimAddressToDong(addressName);
         } catch (RuntimeException e) {
             log.warn("Failed to parse Kakao location response: {}", e.getMessage());
             return null;
         }
     }
 
-    private KakaoPlaceCandidate parsePlaceCandidate(String response) {
-        if (!StringUtils.hasText(response)) {
+    private String formatDongAddress(JsonNode address) {
+        if (address == null || address.isMissingNode() || address.isNull()) {
             return null;
         }
 
-        try {
-            JsonNode root = objectMapper.readTree(response);
-            JsonNode documents = root.path("documents");
-            if (!documents.isArray() || documents.isEmpty()) {
-                return null;
-            }
-
-            JsonNode firstDocument = documents.get(0);
-            String placeName = firstDocument.path("place_name").asString("");
-            if (!StringUtils.hasText(placeName)) {
-                return null;
-            }
-
-            return new KakaoPlaceCandidate(placeName, parseDistanceMeters(firstDocument.path("distance").asString("")));
-        } catch (RuntimeException e) {
-            log.warn("Failed to parse Kakao place response: {}", e.getMessage());
+        String region1 = address.path("region_1depth_name").asString("");
+        String region2 = address.path("region_2depth_name").asString("");
+        String region3 = address.path("region_3depth_h_name").asString("");
+        if (!StringUtils.hasText(region3)) {
+            region3 = address.path("region_3depth_name").asString("");
+        }
+        if (!StringUtils.hasText(region1) || !StringUtils.hasText(region2) || !StringUtils.hasText(region3)) {
             return null;
         }
+
+        return String.join(" ", region1.trim(), region2.trim(), region3.trim());
     }
 
-    private int parseDistanceMeters(String value) {
-        if (!StringUtils.hasText(value)) {
-            return Integer.MAX_VALUE;
+    private String trimAddressToDong(String addressName) {
+        if (!StringUtils.hasText(addressName)) {
+            return null;
         }
 
-        try {
-            return Integer.parseInt(value.trim());
-        } catch (NumberFormatException e) {
-            return Integer.MAX_VALUE;
+        String[] parts = addressName.trim().split("\\s+");
+        if (parts.length < 3) {
+            return addressName.trim();
         }
-    }
 
-    private record KakaoPlaceCandidate(String placeName, int distanceMeters) {
+        return String.join(" ", parts[0], parts[1], parts[2]);
     }
 }
