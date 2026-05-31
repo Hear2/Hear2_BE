@@ -19,6 +19,7 @@ import com.hear2.memory.entity.MemoryPhoto;
 import com.hear2.memory.entity.MemoryPhotoMetadata;
 import com.hear2.memory.repository.MemoryRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MemoryService {
 
     private final MemoryRepository memoryRepository;
@@ -390,10 +392,25 @@ public class MemoryService {
             return readUrl;
         }
         if (memory != null && storedPhotoPath != null && storedPhotoPath.equals(memory.getStoredPhotoPath())) {
+            log.warn(
+                    "Memory photo URL fell back to backend byte endpoint. memoryId={}, coupleId={}, objectKey={}",
+                    memory.getId(),
+                    memory.getCoupleId(),
+                    storedPhotoPath
+            );
             return MemoryResponse.resolvePhotoUrl(memory);
         }
 
-        return MemoryResponse.resolvePhotoUrl(storedPhotoPath);
+        String fallbackUrl = MemoryResponse.resolvePhotoUrl(storedPhotoPath);
+        if (!StringUtils.hasText(fallbackUrl)) {
+            log.warn(
+                    "Memory photo URL could not be resolved. memoryId={}, coupleId={}, objectKey={}",
+                    memory == null ? null : memory.getId(),
+                    memory == null ? null : memory.getCoupleId(),
+                    storedPhotoPath
+            );
+        }
+        return fallbackUrl;
     }
 
     private Memory findMemory(Long coupleId, Long memoryId) {

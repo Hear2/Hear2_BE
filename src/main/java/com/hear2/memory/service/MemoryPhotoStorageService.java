@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
+import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -28,6 +29,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @Service
+@Slf4j
 public class MemoryPhotoStorageService {
 
     private static final String LOCAL = "local";
@@ -110,6 +112,15 @@ public class MemoryPhotoStorageService {
             return storedPhotoPath;
         }
         if (!R2.equals(storageType) || s3Presigner == null || !StringUtils.hasText(r2Bucket)) {
+            if (R2.equals(storageType)) {
+                log.warn(
+                        "Memory photo presigned read URL cannot be created. objectKey={}, storageType={}, presignerConfigured={}, bucketConfigured={}",
+                        storedPhotoPath,
+                        storageType,
+                        s3Presigner != null,
+                        StringUtils.hasText(r2Bucket)
+                );
+            }
             return null;
         }
 
@@ -122,7 +133,21 @@ public class MemoryPhotoStorageService {
                 .getObjectRequest(getObjectRequest)
                 .build();
 
-        return s3Presigner.presignGetObject(presignRequest).url().toString();
+        try {
+            return s3Presigner.presignGetObject(presignRequest).url().toString();
+        } catch (RuntimeException e) {
+            log.error(
+                    "Memory photo presigned read URL creation failed. objectKey={}, storageType={}, bucket={}, expirationMinutes={}, errorType={}, message={}",
+                    storedPhotoPath,
+                    storageType,
+                    r2Bucket,
+                    readExpirationMinutes,
+                    e.getClass().getSimpleName(),
+                    e.getMessage(),
+                    e
+            );
+            return null;
+        }
     }
 
     public MemoryPhotoContent load(String storedPhotoPath, String contentType) {
@@ -130,6 +155,7 @@ public class MemoryPhotoStorageService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "memory photo not found");
         }
         if (isExternalReference(storedPhotoPath)) {
+            log.warn("External memory photo was requested through backend byte endpoint. storedPhotoPath={}", storedPhotoPath);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "external memory photo should be loaded from photoUrl");
         }
 
@@ -192,8 +218,26 @@ public class MemoryPhotoStorageService {
         try {
             s3Client.putObject(putObjectRequest, RequestBody.fromBytes(photo.content()));
         } catch (S3Exception e) {
+            log.error(
+                    "R2 memory photo upload failed. objectKey={}, contentType={}, size={}, statusCode={}, awsMessage={}",
+                    objectKey,
+                    photo.contentType(),
+                    photo.size(),
+                    e.statusCode(),
+                    safeAwsMessage(e),
+                    e
+            );
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "R2 upload failed: " + safeAwsMessage(e), e);
         } catch (RuntimeException e) {
+            log.error(
+                    "Unexpected memory photo upload failure. objectKey={}, contentType={}, size={}, errorType={}, message={}",
+                    objectKey,
+                    photo.contentType(),
+                    photo.size(),
+                    e.getClass().getSimpleName(),
+                    e.getMessage(),
+                    e
+            );
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload memory photo to R2", e);
         }
     }
@@ -206,11 +250,20 @@ public class MemoryPhotoStorageService {
             }
 
             if (!Files.exists(targetPath)) {
+                log.warn("Local memory photo file not found. storedPhotoPath={}, resolvedPath={}", storedPhotoPath, targetPath);
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "memory photo not found");
             }
 
             return Files.readAllBytes(targetPath);
         } catch (IOException e) {
+            log.error(
+                    "Local memory photo load failed. storedPhotoPath={}, uploadRoot={}, errorType={}, message={}",
+                    storedPhotoPath,
+                    uploadRoot,
+                    e.getClass().getSimpleName(),
+                    e.getMessage(),
+                    e
+            );
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to load memory photo", e);
         }
     }
@@ -228,10 +281,33 @@ public class MemoryPhotoStorageService {
             return objectBytes.asByteArray();
         } catch (S3Exception e) {
             if (e.statusCode() == HttpStatus.NOT_FOUND.value()) {
+                log.warn(
+                        "R2 memory photo not found. objectKey={}, bucket={}, statusCode={}, awsMessage={}",
+                        objectKey,
+                        r2Bucket,
+                        e.statusCode(),
+                        safeAwsMessage(e)
+                );
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "memory photo not found", e);
             }
+            log.error(
+                    "R2 memory photo download failed. objectKey={}, bucket={}, statusCode={}, awsMessage={}",
+                    objectKey,
+                    r2Bucket,
+                    e.statusCode(),
+                    safeAwsMessage(e),
+                    e
+            );
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "R2 download failed: " + safeAwsMessage(e), e);
         } catch (RuntimeException e) {
+            log.error(
+                    "Unexpected R2 memory photo download failure. objectKey={}, bucket={}, errorType={}, message={}",
+                    objectKey,
+                    r2Bucket,
+                    e.getClass().getSimpleName(),
+                    e.getMessage(),
+                    e
+            );
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to load memory photo from R2", e);
         }
     }
@@ -302,9 +378,11 @@ public class MemoryPhotoStorageService {
 
     private void validateR2Config() {
         if (s3Client == null) {
+            log.error("R2 S3 client is not configured for memory photo storage. storageType={}, bucketConfigured={}", storageType, StringUtils.hasText(r2Bucket));
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "R2 S3 client is not configured");
         }
         if (!StringUtils.hasText(r2Bucket)) {
+            log.error("R2 bucket is not configured for memory photo storage. storageType={}", storageType);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "cloudflare.r2.bucket is required");
         }
     }
