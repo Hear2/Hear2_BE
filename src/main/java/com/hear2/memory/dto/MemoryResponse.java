@@ -3,15 +3,18 @@ package com.hear2.memory.dto;
 import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiAnalysisStatus;
 import com.hear2.memory.entity.MemoryTagSource;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.Function;
 
 @Getter
 @Builder
+@Schema(description = "추억 앨범 항목 응답")
 public class MemoryResponse {
 
     private Long id;
@@ -22,8 +25,11 @@ public class MemoryResponse {
     private String originalFileName;
     private String photoContentType;
     private Long photoSize;
+    @Schema(description = "대표 사진 URL. R2 사용 시 인증 헤더 없이 접근 가능한 presigned GET URL입니다.")
     private String photoUrl;
     private boolean photoAvailable;
+    @Schema(description = "한 게시물에 포함된 사진 배열. 상세 화면 캐러셀은 이 배열을 사용합니다.")
+    private List<MemoryPhotoResponse> photos;
     private MemoryAiAnalysisStatus aiAnalysisStatus;
     private MemoryPhotoMetadataResponse metadata;
     private List<MemoryAiTagResponse> tags;
@@ -33,6 +39,12 @@ public class MemoryResponse {
     private LocalDateTime updatedAt;
 
     public static MemoryResponse from(Memory memory) {
+        return from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory.getId()));
+    }
+
+    public static MemoryResponse from(Memory memory, Function<String, String> photoUrlResolver) {
+        String coverPhotoUrl = photoUrlResolver.apply(memory.getStoredPhotoPath());
+
         return MemoryResponse.builder()
                 .id(memory.getId())
                 .coupleId(memory.getCoupleId())
@@ -42,8 +54,9 @@ public class MemoryResponse {
                 .originalFileName(memory.getOriginalFileName())
                 .photoContentType(memory.getPhotoContentType())
                 .photoSize(memory.getPhotoSize())
-                .photoUrl(resolvePhotoUrl(memory))
+                .photoUrl(coverPhotoUrl)
                 .photoAvailable(memory.getStoredPhotoPath() != null)
+                .photos(resolvePhotos(memory, photoUrlResolver, coverPhotoUrl))
                 .aiAnalysisStatus(memory.getAiAnalysisStatus())
                 .metadata(MemoryPhotoMetadataResponse.from(memory.getPhotoMetadata()))
                 .tags(memory.getAiTags().stream()
@@ -62,18 +75,61 @@ public class MemoryResponse {
                 .build();
     }
 
+    private static List<MemoryPhotoResponse> resolvePhotos(
+            Memory memory,
+            Function<String, String> photoUrlResolver,
+            String coverPhotoUrl
+    ) {
+        if (memory.getPhotos() == null || memory.getPhotos().isEmpty()) {
+            if (memory.getStoredPhotoPath() == null) {
+                return List.of();
+            }
+
+            return List.of(MemoryPhotoResponse.cover(
+                    coverPhotoUrl,
+                    memory.getStoredPhotoPath(),
+                    memory.getOriginalFileName(),
+                    memory.getPhotoContentType(),
+                    memory.getPhotoSize()
+            ));
+        }
+
+        return memory.getPhotos().stream()
+                .map(photo -> MemoryPhotoResponse.from(
+                        photo,
+                        photoUrlResolver.apply(photo.getStoredPhotoPath())
+                ))
+                .toList();
+    }
+
     public static String resolvePhotoUrl(Memory memory) {
-        if (memory.getId() == null || memory.getStoredPhotoPath() == null) {
+        return resolvePhotoUrl(memory.getStoredPhotoPath(), memory.getId());
+    }
+
+    public static String resolvePhotoUrl(String storedPhotoPath, Long memoryId) {
+        if (memoryId == null || storedPhotoPath == null) {
             return null;
         }
 
-        if (isExternalReference(memory.getStoredPhotoPath())) {
-            return memory.getStoredPhotoPath();
+        if (isExternalReference(storedPhotoPath)) {
+            return storedPhotoPath;
         }
 
         return "/api/v1/memories/items/"
-                + memory.getId()
+                + memoryId
                 + "/photo";
+    }
+
+    public static String resolvePhotoUrl(String storedPhotoPath) {
+        if (storedPhotoPath == null) {
+            return null;
+        }
+
+        if (isExternalReference(storedPhotoPath)) {
+            return storedPhotoPath;
+        }
+
+        return null;
     }
 
     private static boolean isExternalReference(String storedPhotoPath) {

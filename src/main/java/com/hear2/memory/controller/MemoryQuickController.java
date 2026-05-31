@@ -38,7 +38,7 @@ public class MemoryQuickController {
 
     @Operation(
             summary = "3초 기록 생성",
-            description = "프론트가 /media/presigned-url로 받은 uploadUrl에 직접 업로드한 뒤 objectKey와 위치/촬영 시각을 보내 저장합니다. userId와 coupleId는 JWT 기준으로 자동 적용됩니다."
+            description = "프론트가 /media/presigned-url로 받은 uploadUrl에 직접 업로드한 뒤 objectKeys 배열과 위치/촬영 시각을 보내 저장합니다. 사진 여러 장은 한 게시물의 photos[]로 묶이며 첫 번째 사진이 커버입니다. userId와 coupleId는 JWT 기준으로 자동 적용됩니다."
     )
     @PostMapping("/api/v1/memory/quick")
     public ApiResponse<MemoryQuickResponse> createQuickMemory(

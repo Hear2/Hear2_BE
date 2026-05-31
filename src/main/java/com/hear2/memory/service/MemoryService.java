@@ -15,6 +15,7 @@ import com.hear2.memory.dto.MemoryUpdateRequest;
 import com.hear2.memory.dto.MemoryYearAgoResponse;
 import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiTag;
+import com.hear2.memory.entity.MemoryPhoto;
 import com.hear2.memory.entity.MemoryPhotoMetadata;
 import com.hear2.memory.repository.MemoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,8 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -71,6 +74,7 @@ public class MemoryService {
                 .memo(normalizeMemo(request.getMemo()))
                 .memoryDate(resolveMemoryDate(takenAt))
                 .build();
+        memory.replacePhotos(List.of(toMemoryPhoto(storedPhoto, 0)));
 
         memory.attachPhotoMetadata(MemoryPhotoMetadata.create(
                 takenAt,
@@ -84,7 +88,7 @@ public class MemoryService {
         applyAiAnalysis(memory, sanitizedPhoto, request);
         applyUserTags(memory, request.getUserTags());
 
-        return MemoryResponse.from(memoryRepository.save(memory));
+        return toMemoryResponse(memoryRepository.save(memory));
     }
 
     @Transactional
@@ -94,18 +98,22 @@ public class MemoryService {
 
         LocalDateTime capturedAt = toLocalDateTime(request.getCapturedAt());
         ResolvedMemoryLocation resolvedLocation = resolveLocation(request.getLocationName(), request.getLat(), request.getLng());
-        MemoryPhotoStorageResult referencedPhoto = memoryPhotoStorageService.referenceExternal(resolveStoredPhotoReference(request));
+        List<MemoryPhotoStorageResult> referencedPhotos = resolveStoredPhotoReferences(request).stream()
+                .map(memoryPhotoStorageService::referenceExternal)
+                .toList();
+        MemoryPhotoStorageResult coverPhoto = referencedPhotos.get(0);
 
         Memory memory = Memory.builder()
                 .coupleId(coupleId)
                 .uploaderId(currentUserId)
-                .storedPhotoPath(referencedPhoto.storedPhotoPath())
-                .originalFileName(referencedPhoto.originalFileName())
-                .photoContentType(referencedPhoto.contentType())
-                .photoSize(referencedPhoto.size())
+                .storedPhotoPath(coverPhoto.storedPhotoPath())
+                .originalFileName(coverPhoto.originalFileName())
+                .photoContentType(coverPhoto.contentType())
+                .photoSize(coverPhoto.size())
                 .memo(null)
                 .memoryDate(resolveMemoryDate(capturedAt))
                 .build();
+        memory.replacePhotos(toMemoryPhotos(referencedPhotos));
 
         memory.attachPhotoMetadata(MemoryPhotoMetadata.create(
                 capturedAt,
@@ -119,7 +127,7 @@ public class MemoryService {
         applyAiAnalysis(memory, request, resolvedLocation);
         applyUserTags(memory, request.getUserTags());
 
-        return MemoryQuickResponse.from(memoryRepository.save(memory));
+        return toQuickResponse(memoryRepository.save(memory));
     }
 
     @Transactional(readOnly = true)
@@ -128,7 +136,7 @@ public class MemoryService {
 
         return memoryRepository.findByCoupleIdOrderByMemoryDateDescCreatedAtDesc(coupleId)
                 .stream()
-                .map(MemoryResponse::from)
+                .map(this::toMemoryResponse)
                 .toList();
     }
 
@@ -141,7 +149,7 @@ public class MemoryService {
 
         return memoryRepository.findByCoupleIdAndMemoryDateOrderByCreatedAtDesc(coupleId, memoryDate)
                 .stream()
-                .map(MemoryResponse::from)
+                .map(this::toMemoryResponse)
                 .toList();
     }
 
@@ -167,7 +175,7 @@ public class MemoryService {
                         .date(entry.getKey())
                         .thumbnails(entry.getValue().stream()
                                 .limit(3)
-                                .map(MemoryResponse::resolvePhotoUrl)
+                                .map(this::resolveCoverPhotoUrl)
                                 .toList())
                         .memoryCount(entry.getValue().size())
                         .dominantEmoji("😊")
@@ -221,7 +229,7 @@ public class MemoryService {
     @Transactional(readOnly = true)
     public MemoryResponse getMemory(Long memoryId, Long currentUserId) {
         Long coupleId = resolveCoupleId(currentUserId);
-        return MemoryResponse.from(findMemory(coupleId, memoryId));
+        return toMemoryResponse(findMemory(coupleId, memoryId));
     }
 
     @Transactional(readOnly = true)
@@ -245,7 +253,7 @@ public class MemoryService {
             applyUserTags(memory, request.getUserTags());
         }
 
-        return MemoryResponse.from(memory);
+        return toMemoryResponse(memory);
     }
 
     @Transactional
@@ -264,7 +272,7 @@ public class MemoryService {
             applyUserTags(memory, request.getUserTags());
         }
 
-        return MemoryQuickResponse.from(memory);
+        return toQuickResponse(memory);
     }
 
     @Transactional
@@ -272,6 +280,10 @@ public class MemoryService {
         Long coupleId = resolveCoupleId(currentUserId);
         Memory memory = findMemory(coupleId, memoryId);
 
+        memory.getPhotos().stream()
+                .map(photo -> photo.getStoredPhotoPath())
+                .filter(path -> !path.equals(memory.getStoredPhotoPath()))
+                .forEach(memoryPhotoStorageService::delete);
         memoryPhotoStorageService.delete(memory.getStoredPhotoPath());
         memoryRepository.delete(memory);
     }
@@ -338,6 +350,52 @@ public class MemoryService {
                 .toList());
     }
 
+    private List<MemoryPhoto> toMemoryPhotos(List<MemoryPhotoStorageResult> photos) {
+        if (photos == null || photos.isEmpty()) {
+            return List.of();
+        }
+
+        ArrayList<MemoryPhoto> memoryPhotos = new ArrayList<>();
+        for (int index = 0; index < photos.size(); index++) {
+            memoryPhotos.add(toMemoryPhoto(photos.get(index), index));
+        }
+        return memoryPhotos;
+    }
+
+    private MemoryPhoto toMemoryPhoto(MemoryPhotoStorageResult photo, int sortOrder) {
+        return MemoryPhoto.create(
+                photo.storedPhotoPath(),
+                photo.originalFileName(),
+                photo.contentType(),
+                photo.size(),
+                sortOrder
+        );
+    }
+
+    private MemoryResponse toMemoryResponse(Memory memory) {
+        return MemoryResponse.from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory));
+    }
+
+    private MemoryQuickResponse toQuickResponse(Memory memory) {
+        return MemoryQuickResponse.from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory));
+    }
+
+    private String resolveCoverPhotoUrl(Memory memory) {
+        return resolvePhotoUrl(memory.getStoredPhotoPath(), memory);
+    }
+
+    private String resolvePhotoUrl(String storedPhotoPath, Memory memory) {
+        String readUrl = memoryPhotoStorageService.createReadUrl(storedPhotoPath);
+        if (StringUtils.hasText(readUrl)) {
+            return readUrl;
+        }
+        if (memory != null && storedPhotoPath != null && storedPhotoPath.equals(memory.getStoredPhotoPath())) {
+            return MemoryResponse.resolvePhotoUrl(memory);
+        }
+
+        return MemoryResponse.resolvePhotoUrl(storedPhotoPath);
+    }
+
     private Memory findMemory(Long coupleId, Long memoryId) {
         validateCoupleId(coupleId);
         if (memoryId == null) {
@@ -358,8 +416,8 @@ public class MemoryService {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory quick create request is required");
         }
-        if (!StringUtils.hasText(request.getObjectKey()) && !StringUtils.hasText(request.getImageUrl())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "objectKey or imageUrl is required");
+        if (resolveStoredPhotoReferences(request).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "objectKey, objectKeys, or imageUrl is required");
         }
     }
 
@@ -517,11 +575,27 @@ public class MemoryService {
     }
 
     private String resolveStoredPhotoReference(MemoryQuickCreateRequest request) {
+        List<String> references = resolveStoredPhotoReferences(request);
+        return references.isEmpty() ? null : references.get(0);
+    }
+
+    private List<String> resolveStoredPhotoReferences(MemoryQuickCreateRequest request) {
+        LinkedHashSet<String> references = new LinkedHashSet<>();
+
+        if (request.getObjectKeys() != null) {
+            request.getObjectKeys().stream()
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .forEach(references::add);
+        }
         if (StringUtils.hasText(request.getObjectKey())) {
-            return request.getObjectKey().trim();
+            references.add(request.getObjectKey().trim());
+        }
+        if (StringUtils.hasText(request.getImageUrl())) {
+            references.add(request.getImageUrl().trim());
         }
 
-        return request.getImageUrl().trim();
+        return List.copyOf(references);
     }
 
     private String resolveAnalysisImageUrl(MemoryQuickCreateRequest request) {
@@ -529,7 +603,7 @@ public class MemoryService {
             return request.getImageUrl().trim();
         }
 
-        return memoryPhotoStorageService.createReadUrl(request.getObjectKey());
+        return memoryPhotoStorageService.createReadUrl(resolveStoredPhotoReference(request));
     }
 
     private String normalizeLocationName(String locationName) {

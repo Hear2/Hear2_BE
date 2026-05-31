@@ -97,7 +97,13 @@ public class MemoryController {
         return ApiResponse.success(memoryService.getMemory(memoryId, currentUserId(authentication)));
     }
 
-    @Operation(summary = "추억 사진 조회", description = "로그인된 사용자의 커플 앨범 안에서 memoryId에 해당하는 원본 사진 바이트를 조회합니다.")
+    @Operation(
+            summary = "[호환용] 추억 대표 사진 바이트 조회",
+            description = """
+                    기존 호환용 원본 사진 바이트 조회 API입니다.
+                    신규 프론트에서는 앨범/상세 응답의 photoUrl 또는 photos[].url에 내려오는 presigned URL을 사용하세요.
+                    """
+    )
     @GetMapping("/items/{memoryId}/photo")
     public ResponseEntity<byte[]> getMemoryPhoto(
             Authentication authentication,

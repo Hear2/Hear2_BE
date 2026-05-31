@@ -35,7 +35,7 @@ app:
     type: ${CHAT_STORAGE_TYPE:local}
     upload-dir: ${CHAT_UPLOAD_DIR:uploads}
   memory-storage:
-    type: ${MEMORY_STORAGE_TYPE:local}
+    type: ${MEMORY_STORAGE_TYPE:${MEDIA_STORAGE_TYPE:local}}
     upload-dir: ${MEMORY_UPLOAD_DIR:memory-uploads}
   media-storage:
     type: ${MEDIA_STORAGE_TYPE:${MEMORY_STORAGE_TYPE:local}}
