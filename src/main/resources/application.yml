@@ -24,6 +24,9 @@ spring:
           auth: true
           starttls:
             enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
   servlet:
     multipart:
@@ -31,6 +34,13 @@ spring:
       max-request-size: 100MB
 
 app:
+  mail:
+    provider: resend
+    resend:
+      api-key: ${RESEND_API_KEY:}
+      from: ${RESEND_FROM_EMAIL:onboarding@resend.dev}
+      connect-timeout-ms: ${RESEND_CONNECT_TIMEOUT_MS:5000}
+      read-timeout-ms: ${RESEND_READ_TIMEOUT_MS:5000}
   file-storage:
     type: ${CHAT_STORAGE_TYPE:local}
     upload-dir: ${CHAT_UPLOAD_DIR:uploads}
@@ -43,6 +53,8 @@ app:
     presigned-read-expiration-minutes: ${MEDIA_PRESIGNED_READ_EXPIRATION_MINUTES:10}
   location-sharing:
     name-refresh-distance-meters: ${LOCATION_NAME_REFRESH_DISTANCE_METERS:50}
+  time-capsule:
+    open-scheduler-delay-ms: ${TIME_CAPSULE_OPEN_SCHEDULER_DELAY_MS:60000}
   emotion:
     analysis:
       enabled: ${EMOTION_ANALYSIS_ENABLED:true}
@@ -56,11 +68,8 @@ app:
     credentials-path: ${FCM_CREDENTIALS_PATH:}
     project-id: ${FCM_PROJECT_ID:}
   jwt:
-    # TODO: set JWT_SECRET in the deployment environment.
     secret: ${JWT_SECRET:}
-    # TODO: set JWT_ACCESS_TOKEN_EXPIRATION_SECONDS in the deployment environment.
     access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:}
-    # TODO: set JWT_REFRESH_TOKEN_EXPIRATION_SECONDS in the deployment environment.
     refresh-token-expiration-seconds: ${JWT_REFRESH_TOKEN_EXPIRATION_SECONDS:}
 
 cloudflare:
@@ -90,6 +99,11 @@ kakao:
 google:
   oauth:
     client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+    client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+  calendar:
+    redirect-uri: ${GOOGLE_CALENDAR_REDIRECT_URI:http://localhost:8080/api/v1/calendar/google/callback}
+    connect-success-url: ${GOOGLE_CALENDAR_CONNECT_SUCCESS_URL:}
+    oauth-state-expiration-minutes: ${GOOGLE_CALENDAR_OAUTH_STATE_EXPIRATION_MINUTES:10}
 
 server:
-  port: 8080
+  port: ${PORT:8080}

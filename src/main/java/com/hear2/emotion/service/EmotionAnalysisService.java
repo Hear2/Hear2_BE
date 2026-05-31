@@ -10,6 +10,7 @@ import com.hear2.emotion.entity.EmotionAnalysis;
 import com.hear2.emotion.enums.RiskLevel;
 import com.hear2.emotion.repository.EmotionAnalysisRepository;
 import com.hear2.notification.service.FcmNotificationService;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EmotionAnalysisService {
 
@@ -33,7 +35,7 @@ public class EmotionAnalysisService {
     private final FcmNotificationService fcmNotificationService;
     private final ChatParticipantResolver chatParticipantResolver;
 
-    @Transactional
+    @Transactional(noRollbackFor = Exception.class)
     public EmotionAnalysisResponse analyzeAndSave(ChatMessage message) {
         EmotionAnalysisResponse response = analyzeContent(message.getId(), message.getContent());
 
@@ -50,7 +52,11 @@ public class EmotionAnalysisService {
                 .build();
 
         emotionAnalysisRepository.save(analysis);
-        fcmNotificationService.sendRiskAlert(message, response);
+        try {
+            fcmNotificationService.sendRiskAlert(message, response);
+        } catch (Exception exception) {
+            log.warn("Failed to send risk alert after emotion analysis. messageId={}", message.getId(), exception);
+        }
 
         return response;
     }

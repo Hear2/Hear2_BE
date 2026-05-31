@@ -1,10 +1,15 @@
 package com.hear2.memory.service;
 
+import com.hear2.character.repository.CharacterExpHistoryRepository;
+import com.hear2.character.service.CharacterService;
+import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.memory.dto.MemoryCreateRequest;
 import com.hear2.memory.dto.MemoryCalendarDayResponse;
 import com.hear2.memory.dto.MemoryCalendarResponse;
+import com.hear2.memory.dto.MemoryCommentCreateRequest;
+import com.hear2.memory.dto.MemoryCommentResponse;
 import com.hear2.memory.dto.MemoryImageTagRequest;
 import com.hear2.memory.dto.MemoryImageTagResponse;
 import com.hear2.memory.dto.MemoryQuickCreateRequest;
@@ -15,9 +20,13 @@ import com.hear2.memory.dto.MemoryUpdateRequest;
 import com.hear2.memory.dto.MemoryYearAgoResponse;
 import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiTag;
+import com.hear2.memory.entity.MemoryComment;
 import com.hear2.memory.entity.MemoryPhoto;
 import com.hear2.memory.entity.MemoryPhotoMetadata;
+import com.hear2.memory.repository.MemoryCommentRepository;
 import com.hear2.memory.repository.MemoryRepository;
+import com.hear2.user.entity.User;
+import com.hear2.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -45,13 +54,20 @@ import java.util.stream.Collectors;
 @Slf4j
 public class MemoryService {
 
+    private static final long MEMORY_EXP = 20L;
+    private static final long DAILY_MEMORY_EXP_LIMIT = 60L;
+
     private final MemoryRepository memoryRepository;
+    private final CharacterService characterService;
+    private final CharacterExpHistoryRepository characterExpHistoryRepository;
     private final MemoryPhotoStorageService memoryPhotoStorageService;
     private final MemoryAiAnalysisService memoryAiAnalysisService;
     private final MemoryPhotoMetadataExtractor memoryPhotoMetadataExtractor;
     private final MemoryPhotoSanitizer memoryPhotoSanitizer;
     private final KakaoLocalService kakaoLocalService;
     private final CoupleMemberRepository coupleMemberRepository;
+    private final MemoryCommentRepository memoryCommentRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public MemoryResponse createMemory(MultipartFile photo, MemoryCreateRequest request, Long currentUserId) {
@@ -90,7 +106,10 @@ public class MemoryService {
         applyAiAnalysis(memory, sanitizedPhoto, request);
         applyUserTags(memory, request.getUserTags());
 
-        return toMemoryResponse(memoryRepository.save(memory));
+        Memory savedMemory = memoryRepository.save(memory);
+        grantMemoryExp(coupleId, savedMemory.getId());
+
+        return toMemoryResponse(savedMemory);
     }
 
     @Transactional
@@ -129,7 +148,10 @@ public class MemoryService {
         applyAiAnalysis(memory, request, resolvedLocation);
         applyUserTags(memory, request.getUserTags());
 
-        return toQuickResponse(memoryRepository.save(memory));
+        Memory savedMemory = memoryRepository.save(memory);
+        grantMemoryExp(coupleId, savedMemory.getId());
+
+        return toQuickResponse(savedMemory);
     }
 
     @Transactional(readOnly = true)
@@ -231,7 +253,8 @@ public class MemoryService {
     @Transactional(readOnly = true)
     public MemoryResponse getMemory(Long memoryId, Long currentUserId) {
         Long coupleId = resolveCoupleId(currentUserId);
-        return toMemoryResponse(findMemory(coupleId, memoryId));
+        Memory memory = findMemory(coupleId, memoryId);
+        return toMemoryResponse(memory, buildCommentResponses(coupleId, memoryId));
     }
 
     @Transactional(readOnly = true)
@@ -287,7 +310,54 @@ public class MemoryService {
                 .filter(path -> !path.equals(memory.getStoredPhotoPath()))
                 .forEach(memoryPhotoStorageService::delete);
         memoryPhotoStorageService.delete(memory.getStoredPhotoPath());
+        memoryCommentRepository.deleteByCoupleIdAndMemoryId(coupleId, memoryId);
         memoryRepository.delete(memory);
+    }
+
+    @Transactional
+    public MemoryCommentResponse createComment(
+            Long memoryId,
+            MemoryCommentCreateRequest request,
+            Long currentUserId
+    ) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "comment request is required");
+        }
+
+        Long coupleId = resolveCoupleId(currentUserId);
+        findMemory(coupleId, memoryId);
+
+        MemoryComment comment = memoryCommentRepository.save(MemoryComment.builder()
+                .coupleId(coupleId)
+                .memoryId(memoryId)
+                .writerId(currentUserId)
+                .content(normalizeRequired(request.getContent(), "content is required"))
+                .build());
+
+        return MemoryCommentResponse.from(comment, resolveNickname(currentUserId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<MemoryCommentResponse> getComments(Long memoryId, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
+        findMemory(coupleId, memoryId);
+
+        return buildCommentResponses(coupleId, memoryId);
+    }
+
+    @Transactional
+    public void deleteComment(Long memoryId, Long commentId, Long currentUserId) {
+        Long coupleId = resolveCoupleId(currentUserId);
+        findMemory(coupleId, memoryId);
+        MemoryComment comment = memoryCommentRepository
+                .findByIdAndCoupleIdAndMemoryId(commentId, coupleId, memoryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "comment not found"));
+
+        if (!comment.getWriterId().equals(currentUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "only comment writer can delete comment");
+        }
+
+        memoryCommentRepository.delete(comment);
     }
 
     private void applyAiAnalysis(Memory memory, MemoryPhotoFile photo, MemoryCreateRequest request) {
@@ -299,6 +369,26 @@ public class MemoryService {
         } else if (analysisResult.isFailed()) {
             memory.markAiAnalysisFailed();
         }
+    }
+
+    private void grantMemoryExp(Long coupleId, Long memoryId) {
+        long memoryExpToday = characterExpHistoryRepository.sumExpAmountByCoupleIdAndEarnedDateAndSourceType(
+                coupleId,
+                LocalDate.now(),
+                CharacterExpSourceType.MEMORY
+        );
+        long remainingMemoryExpToday = Math.max(DAILY_MEMORY_EXP_LIMIT - memoryExpToday, 0L);
+        long requestedExp = Math.min(MEMORY_EXP, remainingMemoryExpToday);
+        if (requestedExp <= 0) {
+            return;
+        }
+
+        characterService.grantExp(
+                coupleId,
+                CharacterExpSourceType.MEMORY,
+                "MEMORY:" + memoryId,
+                requestedExp
+        );
     }
 
     private void applyAiAnalysis(
@@ -376,6 +466,14 @@ public class MemoryService {
 
     private MemoryResponse toMemoryResponse(Memory memory) {
         return MemoryResponse.from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory));
+    }
+
+    private MemoryResponse toMemoryResponse(Memory memory, List<MemoryCommentResponse> comments) {
+        return MemoryResponse.from(
+                memory,
+                comments,
+                storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory)
+        );
     }
 
     private MemoryQuickResponse toQuickResponse(Memory memory) {
@@ -457,6 +555,37 @@ public class MemoryService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple connection not found"));
 
         return member.getCoupleId();
+    }
+
+    private List<MemoryCommentResponse> buildCommentResponses(Long coupleId, Long memoryId) {
+        List<MemoryComment> comments = memoryCommentRepository.findByCoupleIdAndMemoryIdOrderByCreatedAtAsc(
+                coupleId,
+                memoryId
+        );
+        Map<Long, String> nicknamesByUserId = userRepository.findAllById(comments
+                        .stream()
+                        .map(MemoryComment::getWriterId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        User::getUserId,
+                        user -> StringUtils.hasText(user.getNickname()) ? user.getNickname() : "알 수 없음"
+                ));
+
+        return comments.stream()
+                .map(comment -> MemoryCommentResponse.from(
+                        comment,
+                        nicknamesByUserId.getOrDefault(comment.getWriterId(), "알 수 없음")
+                ))
+                .toList();
+    }
+
+    private String resolveNickname(Long userId) {
+        return userRepository.findById(userId)
+                .map(User::getNickname)
+                .filter(StringUtils::hasText)
+                .orElse("알 수 없음");
     }
 
     private LocalDate resolveMemoryDate(LocalDateTime takenAt) {
@@ -589,6 +718,15 @@ public class MemoryService {
 
     private String normalizeMemo(String memo) {
         return StringUtils.hasText(memo) ? memo.trim() : null;
+    }
+
+    private String normalizeRequired(String value, String message) {
+        String normalized = normalizeMemo(value);
+        if (!StringUtils.hasText(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
+
+        return normalized;
     }
 
     private String resolveStoredPhotoReference(MemoryQuickCreateRequest request) {

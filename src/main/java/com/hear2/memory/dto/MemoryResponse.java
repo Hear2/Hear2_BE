@@ -35,6 +35,7 @@ public class MemoryResponse {
     private List<MemoryAiTagResponse> tags;
     private List<String> aiTags;
     private List<String> userTags;
+    private List<MemoryCommentResponse> comments;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -70,6 +71,7 @@ public class MemoryResponse {
                         .filter(tag -> tag.getSource() == MemoryTagSource.USER)
                         .map(tag -> "#" + tag.getTagName())
                         .toList())
+                .comments(List.of())
                 .createdAt(memory.getCreatedAt())
                 .updatedAt(memory.getUpdatedAt())
                 .build();
@@ -100,6 +102,20 @@ public class MemoryResponse {
                         photoUrlResolver.apply(photo.getStoredPhotoPath())
                 ))
                 .toList();
+    }
+
+    public static MemoryResponse from(Memory memory, List<MemoryCommentResponse> comments) {
+        return from(memory, comments, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory.getId()));
+    }
+
+    public static MemoryResponse from(
+            Memory memory,
+            List<MemoryCommentResponse> comments,
+            Function<String, String> photoUrlResolver
+    ) {
+        MemoryResponse response = from(memory, photoUrlResolver);
+        response.comments = comments == null ? List.of() : comments;
+        return response;
     }
 
     public static String resolvePhotoUrl(Memory memory) {

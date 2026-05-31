@@ -4,6 +4,7 @@ import com.hear2.chat.dto.ChatMediaResponse;
 import com.hear2.chat.dto.ChatMessageRequest;
 import com.hear2.chat.dto.ChatMessageResponse;
 import com.hear2.chat.service.ChatMediaStorageService;
+import com.hear2.chat.service.ChatParticipantResolver;
 import com.hear2.chat.service.ChatService;
 import com.hear2.global.error.ApiErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,10 +33,11 @@ public class ChatController {
 
     private final ChatService chatService;
     private final ChatMediaStorageService chatMediaStorageService;
+    private final ChatParticipantResolver chatParticipantResolver;
 
     @Operation(
             summary = "채팅 메시지 전송",
-            description = "로그인된 사용자의 커플 정보를 기준으로 메시지를 저장합니다. TEXT 메시지는 저장 직후 GPT-4o 기반 감정 분석을 수행하고, 감정 이모지/점수/리스크 정보와 AI 판사 호출 가능 여부를 응답에 포함합니다. 주의/경고/위험 리스크가 감지되면 상대방에게 FCM 알림 발송을 시도합니다."
+            description = "로그인된 사용자의 커플 정보를 기준으로 메시지를 저장합니다. TEXT 메시지는 저장 후 감정 분석을 best-effort로 시도하며, AI 서버 장애나 분석 실패가 있어도 메시지 저장은 성공해야 합니다. 감정 분석에 성공하면 POST 응답에 emotionType/emotionScore/emotionEmoji/riskLevel/judgeAvailable 등이 포함되고, 분석 전 또는 실패 시 해당 필드는 null 또는 기본값일 수 있습니다."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "메시지 전송 성공",
@@ -82,7 +84,7 @@ public class ChatController {
         return chatService.saveMessage(currentUserId(authentication), request);
     }
 
-    @Operation(summary = "채팅 미디어 업로드", description = "이미지 또는 동영상 파일을 업로드하고 채팅 메시지에서 사용할 미디어 정보를 반환합니다.")
+    @Operation(summary = "채팅 미디어 업로드", description = "이미지 또는 동영상 파일을 업로드하고 채팅 메시지에서 사용할 미디어 정보를 반환합니다. 업로드 전에 로그인 사용자와 커플 연결 상태를 먼저 검증하며, 커플이 연결되지 않은 사용자는 업로드를 진행할 수 없습니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "미디어 업로드 성공",
                     content = @Content(schema = @Schema(implementation = ChatMediaResponse.class))),
@@ -91,13 +93,15 @@ public class ChatController {
     })
     @PostMapping(value = "/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ChatMediaResponse uploadMedia(
+            Authentication authentication,
             @Parameter(description = "업로드할 이미지 또는 동영상 파일", required = true)
             @RequestParam("file") MultipartFile file
     ) {
+        chatParticipantResolver.resolve(currentUserId(authentication));
         return chatMediaStorageService.store(file);
     }
 
-    @Operation(summary = "내 채팅 메시지 목록 조회", description = "로그인된 사용자의 커플 기준으로 채팅 메시지를 오래된 순서로 조회하며, 저장된 감정 분석 결과를 함께 반환합니다.")
+    @Operation(summary = "내 채팅 메시지 목록 조회", description = "로그인된 사용자의 커플 기준으로 채팅 메시지를 오래된 순서로 조회합니다. emotion_analysis에 저장된 감정 분석 결과가 있으면 emotionType/emotionEmoji/riskLevel/judgeAvailable 등을 함께 반환하고, 아직 분석 전이거나 분석 실패한 메시지는 해당 감정 필드가 null 또는 기본값으로 반환됩니다.")
     @ApiResponse(responseCode = "200", description = "메시지 목록 조회 성공")
     @GetMapping("/messages")
     public List<ChatMessageResponse> getMessages(Authentication authentication) {

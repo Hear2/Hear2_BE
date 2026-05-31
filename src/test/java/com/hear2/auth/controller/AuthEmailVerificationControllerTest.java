@@ -3,6 +3,7 @@ package com.hear2.auth.controller;
 import com.hear2.auth.entity.EmailVerificationToken;
 import com.hear2.auth.repository.EmailVerificationTokenRepository;
 import com.hear2.auth.repository.RefreshTokenRepository;
+import com.hear2.global.mail.EmailSendException;
 import com.hear2.global.mail.EmailService;
 import com.hear2.user.entity.User;
 import com.hear2.user.repository.UserRepository;
@@ -24,8 +25,10 @@ import java.util.Base64;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -83,9 +86,32 @@ class AuthEmailVerificationControllerTest {
                 });
 
         ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
-        verify(emailService).sendEmailVerificationEmail(eq("signup-verify-user@example.com"), tokenCaptor.capture());
+        verify(emailService, timeout(1000)).sendEmailVerificationEmail(eq("signup-verify-user@example.com"), tokenCaptor.capture());
         assertThat(tokenCaptor.getValue()).isNotBlank();
         assertThat(emailVerificationTokenRepository.findAll().get(0).getTokenHash()).isEqualTo(hashToken(tokenCaptor.getValue()));
+    }
+
+    @Test
+    void signupSucceedsEvenWhenVerificationEmailFails() throws Exception {
+        doThrow(new EmailSendException("failed to send email verification email", new RuntimeException()))
+                .when(emailService).sendEmailVerificationEmail(eq("signup-mail-fail-user@example.com"), anyString());
+
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "signup-mail-fail-user@example.com",
+                                  "password": "password",
+                                  "nickname": "signup-mail-fail-user",
+                                  "provider": "LOCAL"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        User user = userRepository.findByEmail("signup-mail-fail-user@example.com").orElseThrow();
+        assertThat(user.getEmailVerified()).isFalse();
+        assertThat(emailVerificationTokenRepository.findByUserId(user.getUserId())).isPresent();
+        verify(emailService, timeout(1000)).sendEmailVerificationEmail(eq("signup-mail-fail-user@example.com"), anyString());
     }
 
     @Test
@@ -167,7 +193,7 @@ class AuthEmailVerificationControllerTest {
         assertThat(rotatedToken.getExpiresAt()).isAfter(LocalDateTime.now());
 
         ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
-        verify(emailService).sendEmailVerificationEmail(eq("resend-email-verify-user@example.com"), tokenCaptor.capture());
+        verify(emailService, timeout(1000)).sendEmailVerificationEmail(eq("resend-email-verify-user@example.com"), tokenCaptor.capture());
         assertThat(rotatedToken.getTokenHash()).isEqualTo(hashToken(tokenCaptor.getValue()));
     }
 
