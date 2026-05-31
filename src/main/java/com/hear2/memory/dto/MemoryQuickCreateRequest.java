@@ -17,11 +17,14 @@ import java.util.List;
         description = "3초 기록 생성 요청. objectKey는 /media/presigned-url 발급 응답의 값입니다. 기존 호환을 위해 imageUrl도 받을 수 있습니다.",
         example = """
                 {
-                  "objectKey": "media/memory/7/20260513/9d2c.jpg",
+                  "objectKeys": [
+                    "media/memory/7/20260513/9d2c-1.jpg",
+                    "media/memory/7/20260513/9d2c-2.jpg"
+                  ],
                   "lat": 37.5641,
                   "lng": 126.9244,
                   "capturedAt": "2026-05-12T14:00:00Z",
-                  "locationName": "명지대학교 자연캠퍼스",
+                  "locationName": "서울특별시 마포구 연남동",
                   "userTags": ["우리둘이", "특별한날"]
                 }
                 """
@@ -35,6 +38,13 @@ public class MemoryQuickCreateRequest {
     @Size(max = 2048)
     @Schema(description = "presigned URL 업로드 후 받은 R2/S3 object key", example = "media/memory/7/20260513/9d2c.jpg")
     private String objectKey;
+
+    @Size(max = 20)
+    @Schema(
+            description = "한 게시물에 담을 사진 object key 배열. 여러 장 업로드 시 이 값을 사용하며, 첫 번째 항목이 커버 사진입니다.",
+            example = "[\"media/memory/7/20260513/9d2c-1.jpg\", \"media/memory/7/20260513/9d2c-2.jpg\"]"
+    )
+    private List<@Size(max = 2048) String> objectKeys;
 
     @DecimalMin("-90.0")
     @DecimalMax("90.0")

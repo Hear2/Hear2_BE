@@ -8,6 +8,7 @@ import lombok.Getter;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.function.Function;
 
 @Getter
 @Builder
@@ -16,6 +17,8 @@ public class MemoryQuickResponse {
 
     private Long id;
     private String imageUrl;
+    private List<String> imageUrls;
+    private List<MemoryPhotoResponse> photos;
     private String aiPlace;
     private String aiTime;
     private List<String> aiTags;
@@ -23,9 +26,19 @@ public class MemoryQuickResponse {
     private String note;
 
     public static MemoryQuickResponse from(Memory memory) {
+        return from(memory, storedPhotoPath -> MemoryResponse.resolvePhotoUrl(storedPhotoPath, memory.getId()));
+    }
+
+    public static MemoryQuickResponse from(Memory memory, Function<String, String> photoUrlResolver) {
+        MemoryResponse memoryResponse = MemoryResponse.from(memory, photoUrlResolver);
+
         return MemoryQuickResponse.builder()
                 .id(memory.getId())
-                .imageUrl(MemoryResponse.resolvePhotoUrl(memory))
+                .imageUrl(memoryResponse.getPhotoUrl())
+                .imageUrls(memoryResponse.getPhotos().stream()
+                        .map(MemoryPhotoResponse::getUrl)
+                        .toList())
+                .photos(memoryResponse.getPhotos())
                 .aiPlace(memory.getPhotoMetadata() == null ? null : memory.getPhotoMetadata().getLocationName())
                 .aiTime(resolveAiTime(memory))
                 .aiTags(memory.getAiTags().stream()

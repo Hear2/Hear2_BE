@@ -64,6 +64,11 @@ public class Memory {
     @Builder.Default
     private List<MemoryAiTag> aiTags = new ArrayList<>();
 
+    @OneToMany(mappedBy = "memory", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
+    @Builder.Default
+    private List<MemoryPhoto> photos = new ArrayList<>();
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -109,6 +114,24 @@ public class Memory {
 
     public void updateMemo(String memo) {
         this.memo = memo;
+    }
+
+    public void replacePhotos(List<MemoryPhoto> photos) {
+        this.photos.clear();
+        if (photos == null) {
+            return;
+        }
+
+        photos.forEach(this::addPhoto);
+    }
+
+    private void addPhoto(MemoryPhoto photo) {
+        if (photo == null) {
+            return;
+        }
+
+        photo.assignMemory(this);
+        this.photos.add(photo);
     }
 
     private void addAiTag(MemoryAiTag aiTag) {
