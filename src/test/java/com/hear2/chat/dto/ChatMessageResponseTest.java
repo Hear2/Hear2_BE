@@ -23,6 +23,7 @@ class ChatMessageResponseTest {
         assertThat(response.getRiskLevel()).isNull();
         assertThat(response.getJudgeAvailable()).isFalse();
         assertThat(response.getJudgeTriggerMessageId()).isNull();
+        assertThat(response.getEmotionFeedback()).isNull();
     }
 
     @Test
@@ -34,6 +35,7 @@ class ChatMessageResponseTest {
 
         assertThat(response.getJudgeAvailable()).isTrue();
         assertThat(response.getJudgeTriggerMessageId()).isEqualTo(100L);
+        assertThat(response.getEmotionFeedback()).isNull();
     }
 
     @Test
@@ -45,6 +47,7 @@ class ChatMessageResponseTest {
 
         assertThat(response.getJudgeAvailable()).isFalse();
         assertThat(response.getJudgeTriggerMessageId()).isNull();
+        assertThat(response.getEmotionFeedback()).isNull();
     }
 
     @Test
@@ -56,6 +59,16 @@ class ChatMessageResponseTest {
 
         assertThat(response.getJudgeAvailable()).isTrue();
         assertThat(response.getJudgeTriggerMessageId()).isEqualTo(100L);
+    }
+
+    @Test
+    void exposesEmotionFeedbackWhenPresent() {
+        ChatMessage message = textMessage(100L);
+        EmotionAnalysisResponse emotion = emotion(RiskLevel.NONE);
+
+        ChatMessageResponse response = ChatMessageResponse.from(message, emotion, true);
+
+        assertThat(response.getEmotionFeedback()).isTrue();
     }
 
     private ChatMessage textMessage(Long id) {

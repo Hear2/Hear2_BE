@@ -11,6 +11,7 @@ import com.hear2.character.service.CharacterService;
 import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
 import com.hear2.emotion.enums.EmotionType;
+import com.hear2.emotion.service.EmotionFeedbackService;
 import com.hear2.emotion.service.EmotionAnalysisService;
 import org.junit.jupiter.api.Test;
 
@@ -32,12 +33,14 @@ class ChatServiceTest {
 
     private final ChatMessageRepository chatMessageRepository = mock(ChatMessageRepository.class);
     private final EmotionAnalysisService emotionAnalysisService = mock(EmotionAnalysisService.class);
+    private final EmotionFeedbackService emotionFeedbackService = mock(EmotionFeedbackService.class);
     private final ChatParticipantResolver chatParticipantResolver = mock(ChatParticipantResolver.class);
     private final CharacterService characterService = mock(CharacterService.class);
     private final CharacterExpHistoryRepository characterExpHistoryRepository = mock(CharacterExpHistoryRepository.class);
     private final ChatService chatService = new ChatService(
             chatMessageRepository,
             emotionAnalysisService,
+            emotionFeedbackService,
             chatParticipantResolver,
             characterService,
             characterExpHistoryRepository
@@ -139,6 +142,32 @@ class ChatServiceTest {
         assertThat(response.getReadMessageIds()).containsExactly(100L);
         verify(chatMessageRepository)
                 .findByCoupleIdAndReceiverIdAndReadAtIsNullOrderByCreatedAtAsc(1L, 10L);
+    }
+
+    @Test
+    void getMessagesIncludesCurrentUsersEmotionFeedback() {
+        ChatMessage first = message(100L);
+        ChatMessage second = message(101L);
+        EmotionAnalysisResponse emotion = EmotionAnalysisResponse.builder()
+                .emotionType(EmotionType.HAPPY)
+                .emotionEmoji("😊")
+                .build();
+
+        when(chatParticipantResolver.resolve(10L))
+                .thenReturn(new ChatParticipantResolver.ChatRoomContext(1L, 10L, 11L));
+        when(chatMessageRepository.findByCoupleIdOrderByCreatedAtAsc(1L))
+                .thenReturn(List.of(first, second));
+        when(emotionAnalysisService.findByMessageIds(List.of(100L, 101L)))
+                .thenReturn(java.util.Map.of(100L, emotion));
+        when(emotionFeedbackService.findFeedbackByMessageIdsAndUserId(List.of(100L, 101L), 10L))
+                .thenReturn(java.util.Map.of(100L, true, 101L, false));
+
+        List<ChatMessageResponse> responses = chatService.getMessages(10L);
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses.get(0).getEmotionEmoji()).isEqualTo("😊");
+        assertThat(responses.get(0).getEmotionFeedback()).isTrue();
+        assertThat(responses.get(1).getEmotionFeedback()).isFalse();
     }
 
     private ChatMessageRequest textRequest(String content) throws Exception {

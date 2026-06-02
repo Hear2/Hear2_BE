@@ -10,6 +10,7 @@ import com.hear2.character.repository.CharacterExpHistoryRepository;
 import com.hear2.character.service.CharacterService;
 import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
+import com.hear2.emotion.service.EmotionFeedbackService;
 import com.hear2.emotion.service.EmotionAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,7 @@ public class ChatService {
 
     private final ChatMessageRepository chatMessageRepository;
     private final EmotionAnalysisService emotionAnalysisService;
+    private final EmotionFeedbackService emotionFeedbackService;
     private final ChatParticipantResolver chatParticipantResolver;
     private final CharacterService characterService;
     private final CharacterExpHistoryRepository characterExpHistoryRepository;
@@ -83,9 +85,14 @@ public class ChatService {
                 .map(ChatMessage::getId)
                 .toList();
         Map<Long, EmotionAnalysisResponse> emotionsByMessageId = emotionAnalysisService.findByMessageIds(messageIds);
+        Map<Long, Boolean> feedbackByMessageId = emotionFeedbackService.findFeedbackByMessageIdsAndUserId(messageIds, currentUserId);
 
         return messages.stream()
-                .map(message -> ChatMessageResponse.from(message, emotionsByMessageId.get(message.getId())))
+                .map(message -> ChatMessageResponse.from(
+                        message,
+                        emotionsByMessageId.get(message.getId()),
+                        feedbackByMessageId.get(message.getId())
+                ))
                 .toList();
     }
 
