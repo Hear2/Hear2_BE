@@ -22,6 +22,7 @@ import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiTag;
 import com.hear2.memory.entity.MemoryComment;
 import com.hear2.memory.entity.MemoryPhoto;
+import com.hear2.memory.entity.MemoryPhotoAiTag;
 import com.hear2.memory.entity.MemoryPhotoMetadata;
 import com.hear2.memory.repository.MemoryCommentRepository;
 import com.hear2.memory.repository.MemoryRepository;
@@ -92,7 +93,8 @@ public class MemoryService {
                 .memo(normalizeMemo(request.getMemo()))
                 .memoryDate(resolveMemoryDate(takenAt))
                 .build();
-        memory.replacePhotos(List.of(toMemoryPhoto(storedPhoto, 0)));
+        List<MemoryPhoto> memoryPhotos = List.of(toMemoryPhoto(storedPhoto, 0));
+        memory.replacePhotos(memoryPhotos);
 
         memory.attachPhotoMetadata(MemoryPhotoMetadata.create(
                 takenAt,
@@ -103,7 +105,7 @@ public class MemoryService {
                 resolvedLocation.addressName()
         ));
 
-        applyAiAnalysis(memory, sanitizedPhoto, request);
+        applyAiAnalysis(memory, memoryPhotos.get(0), sanitizedPhoto, request);
         applyUserTags(memory, request.getUserTags());
 
         Memory savedMemory = memoryRepository.save(memory);
@@ -134,7 +136,8 @@ public class MemoryService {
                 .memo(null)
                 .memoryDate(resolveMemoryDate(capturedAt))
                 .build();
-        memory.replacePhotos(toMemoryPhotos(referencedPhotos));
+        List<MemoryPhoto> memoryPhotos = toMemoryPhotos(referencedPhotos);
+        memory.replacePhotos(memoryPhotos);
 
         memory.attachPhotoMetadata(MemoryPhotoMetadata.create(
                 capturedAt,
@@ -145,7 +148,7 @@ public class MemoryService {
                 resolvedLocation.addressName()
         ));
 
-        applyAiAnalysis(memory, request, resolvedLocation);
+        applyAiAnalysis(memory, memoryPhotos, request, resolvedLocation);
         applyUserTags(memory, request.getUserTags());
 
         Memory savedMemory = memoryRepository.save(memory);
@@ -360,9 +363,10 @@ public class MemoryService {
         memoryCommentRepository.delete(comment);
     }
 
-    private void applyAiAnalysis(Memory memory, MemoryPhotoFile photo, MemoryCreateRequest request) {
+    private void applyAiAnalysis(Memory memory, MemoryPhoto photoEntity, MemoryPhotoFile photo, MemoryCreateRequest request) {
         MemoryAiAnalysisResult analysisResult = memoryAiAnalysisService.analyze(photo, request);
         memory.replaceAiTags(toAiTags(analysisResult));
+        applyPhotoAiAnalysis(photoEntity, analysisResult);
 
         if (analysisResult.isCompleted()) {
             memory.markAiAnalyzed();
@@ -393,21 +397,47 @@ public class MemoryService {
 
     private void applyAiAnalysis(
             Memory memory,
+            List<MemoryPhoto> photos,
             MemoryQuickCreateRequest request,
             ResolvedMemoryLocation resolvedLocation
     ) {
-        MemoryAiAnalysisResult analysisResult = memoryAiAnalysisService.analyzeImageUrl(
-                resolveAnalysisImageUrl(request),
-                null,
-                resolvedLocation.locationName(),
-                toLocalDateTime(request.getCapturedAt())
-        );
-        memory.replaceAiTags(toAiTags(analysisResult));
+        MemoryAiAnalysisResult coverAnalysisResult = MemoryAiAnalysisResult.pending();
 
-        if (analysisResult.isCompleted()) {
+        if (photos != null) {
+            for (MemoryPhoto photo : photos) {
+                MemoryAiAnalysisResult analysisResult = memoryAiAnalysisService.analyzeImageUrl(
+                        resolveAnalysisImageUrl(photo.getStoredPhotoPath()),
+                        null,
+                        resolvedLocation.locationName(),
+                        toLocalDateTime(request.getCapturedAt())
+                );
+                applyPhotoAiAnalysis(photo, analysisResult);
+
+                if (photo.getSortOrder() == 0) {
+                    coverAnalysisResult = analysisResult;
+                }
+            }
+        }
+
+        memory.replaceAiTags(toAiTags(coverAnalysisResult));
+
+        if (coverAnalysisResult.isCompleted()) {
             memory.markAiAnalyzed();
-        } else if (analysisResult.isFailed()) {
+        } else if (coverAnalysisResult.isFailed()) {
             memory.markAiAnalysisFailed();
+        }
+    }
+
+    private void applyPhotoAiAnalysis(MemoryPhoto photo, MemoryAiAnalysisResult analysisResult) {
+        if (photo == null) {
+            return;
+        }
+
+        photo.replaceAiTags(toPhotoAiTags(analysisResult));
+        if (analysisResult != null && analysisResult.isCompleted()) {
+            photo.markAiAnalyzed();
+        } else if (analysisResult != null && analysisResult.isFailed()) {
+            photo.markAiAnalysisFailed();
         }
     }
 
@@ -419,6 +449,17 @@ public class MemoryService {
         return analysisResult.getTags().stream()
                 .filter(tag -> tag != null && StringUtils.hasText(tag.tagName()))
                 .map(tag -> MemoryAiTag.ai(tag.tagName().trim(), tag.confidence()))
+                .toList();
+    }
+
+    private List<MemoryPhotoAiTag> toPhotoAiTags(MemoryAiAnalysisResult analysisResult) {
+        if (analysisResult == null || analysisResult.getTags() == null) {
+            return List.of();
+        }
+
+        return analysisResult.getTags().stream()
+                .filter(tag -> tag != null && StringUtils.hasText(tag.tagName()))
+                .map(tag -> MemoryPhotoAiTag.ai(tag.tagName().trim(), tag.confidence()))
                 .toList();
     }
 
@@ -753,12 +794,8 @@ public class MemoryService {
         return List.copyOf(references);
     }
 
-    private String resolveAnalysisImageUrl(MemoryQuickCreateRequest request) {
-        if (StringUtils.hasText(request.getImageUrl())) {
-            return request.getImageUrl().trim();
-        }
-
-        return memoryPhotoStorageService.createReadUrl(resolveStoredPhotoReference(request));
+    private String resolveAnalysisImageUrl(String storedPhotoReference) {
+        return memoryPhotoStorageService.createReadUrl(storedPhotoReference);
     }
 
     private String normalizeLocationName(String locationName) {

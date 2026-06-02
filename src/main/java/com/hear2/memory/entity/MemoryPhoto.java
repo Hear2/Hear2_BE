@@ -3,6 +3,9 @@ package com.hear2.memory.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(indexes = {
         @Index(name = "idx_memory_photo_memory_order", columnList = "memory_id, sortOrder")
@@ -40,6 +43,14 @@ public class MemoryPhoto {
     @Column(nullable = false)
     private int sortOrder;
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private MemoryAiAnalysisStatus aiAnalysisStatus = MemoryAiAnalysisStatus.PENDING;
+
+    @OneToMany(mappedBy = "photo", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<MemoryPhotoAiTag> aiTags = new ArrayList<>();
+
     public static MemoryPhoto create(
             String storedPhotoPath,
             String originalFileName,
@@ -58,5 +69,31 @@ public class MemoryPhoto {
 
     public void assignMemory(Memory memory) {
         this.memory = memory;
+    }
+
+    public void replaceAiTags(List<MemoryPhotoAiTag> tags) {
+        this.aiTags.clear();
+        if (tags == null) {
+            return;
+        }
+
+        tags.forEach(this::addAiTag);
+    }
+
+    public void markAiAnalyzed() {
+        this.aiAnalysisStatus = MemoryAiAnalysisStatus.COMPLETED;
+    }
+
+    public void markAiAnalysisFailed() {
+        this.aiAnalysisStatus = MemoryAiAnalysisStatus.FAILED;
+    }
+
+    private void addAiTag(MemoryPhotoAiTag tag) {
+        if (tag == null) {
+            return;
+        }
+
+        tag.assignPhoto(this);
+        this.aiTags.add(tag);
     }
 }

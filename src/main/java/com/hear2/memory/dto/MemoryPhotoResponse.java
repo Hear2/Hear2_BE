@@ -1,9 +1,12 @@
 package com.hear2.memory.dto;
 
 import com.hear2.memory.entity.MemoryPhoto;
+import com.hear2.memory.entity.MemoryAiAnalysisStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
+
+import java.util.List;
 
 @Getter
 @Builder
@@ -31,6 +34,15 @@ public class MemoryPhotoResponse {
     @Schema(description = "캐러셀 표시 순서. 0부터 시작합니다.", example = "0")
     private int order;
 
+    @Schema(description = "해당 사진의 AI 분석 상태")
+    private MemoryAiAnalysisStatus aiAnalysisStatus;
+
+    @Schema(description = "해당 사진의 AI 태그 상세. 태그별 사진 분류는 이 값을 사용하세요.")
+    private List<MemoryPhotoAiTagResponse> tags;
+
+    @Schema(description = "해당 사진의 AI 태그 문자열 목록. #이 포함됩니다.", example = "[\"#축구\", \"#운동장\"]")
+    private List<String> aiTags;
+
     public static MemoryPhotoResponse from(MemoryPhoto photo, String url) {
         return MemoryPhotoResponse.builder()
                 .id(photo.getId())
@@ -40,6 +52,13 @@ public class MemoryPhotoResponse {
                 .contentType(photo.getPhotoContentType())
                 .size(photo.getPhotoSize())
                 .order(photo.getSortOrder())
+                .aiAnalysisStatus(photo.getAiAnalysisStatus())
+                .tags(photo.getAiTags().stream()
+                        .map(MemoryPhotoAiTagResponse::from)
+                        .toList())
+                .aiTags(photo.getAiTags().stream()
+                        .map(tag -> "#" + tag.getTagName())
+                        .toList())
                 .build();
     }
 
@@ -57,6 +76,9 @@ public class MemoryPhotoResponse {
                 .contentType(contentType)
                 .size(size)
                 .order(0)
+                .aiAnalysisStatus(MemoryAiAnalysisStatus.PENDING)
+                .tags(List.of())
+                .aiTags(List.of())
                 .build();
     }
 }
