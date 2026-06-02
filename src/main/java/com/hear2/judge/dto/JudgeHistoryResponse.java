@@ -51,7 +51,20 @@ public class JudgeHistoryResponse {
     @Schema(description = "생성 시각", example = "2026-05-09T16:30:00")
     private LocalDateTime createdAt;
 
+    @Schema(description = "현재 로그인 사용자가 이 판결문에 피드백을 남겼는지 여부", example = "true")
+    private Boolean feedbackSubmitted;
+
+    @Schema(description = "현재 로그인 사용자의 만족 여부. 피드백이 없으면 null입니다.", example = "false", nullable = true)
+    private Boolean satisfied;
+
+    @Schema(description = "현재 로그인 사용자의 추가 의견. 피드백이 없거나 의견이 없으면 null입니다.", example = "조금 더 구체적인 해결책이 있었으면 좋겠어요.", nullable = true)
+    private String feedbackText;
+
     public static JudgeHistoryResponse from(JudgeHistory history) {
+        return from(history, JudgeFeedbackSummary.empty());
+    }
+
+    public static JudgeHistoryResponse from(JudgeHistory history, JudgeFeedbackSummary feedback) {
         return JudgeHistoryResponse.builder()
                 .id(history.getId())
                 .coupleId(history.getCoupleId())
@@ -65,6 +78,9 @@ public class JudgeHistoryResponse {
                 .conflictType(history.getConflictType())
                 .judgeTone(history.getJudgeTone())
                 .createdAt(history.getCreatedAt())
+                .feedbackSubmitted(feedback.feedbackSubmitted())
+                .satisfied(feedback.satisfied())
+                .feedbackText(feedback.feedbackText())
                 .build();
     }
 }

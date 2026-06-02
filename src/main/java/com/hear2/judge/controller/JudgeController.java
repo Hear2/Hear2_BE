@@ -2,9 +2,12 @@ package com.hear2.judge.controller;
 
 import com.hear2.global.error.ApiErrorResponse;
 import com.hear2.judge.dto.ConflictPatternResponse;
+import com.hear2.judge.dto.JudgeFeedbackRequest;
+import com.hear2.judge.dto.JudgeFeedbackResponse;
 import com.hear2.judge.dto.JudgeHistoryResponse;
 import com.hear2.judge.dto.JudgeRequest;
 import com.hear2.judge.dto.JudgeResponse;
+import com.hear2.judge.service.JudgeFeedbackService;
 import com.hear2.judge.service.JudgeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -13,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -28,6 +32,7 @@ import java.util.List;
 public class JudgeController {
 
     private final JudgeService judgeService;
+    private final JudgeFeedbackService judgeFeedbackService;
 
     @Operation(
             summary = "AI 판사 호출",
@@ -65,6 +70,29 @@ public class JudgeController {
             Authentication authentication
     ) {
         return judgeService.getPatterns(currentUserId(authentication));
+    }
+
+    @Operation(
+            summary = "AI 판결문 피드백 저장",
+            description = "현재 로그인 사용자가 자신의 커플 판결문에 대해 만족 여부와 선택 의견을 저장합니다. 같은 판결문에 다시 제출하면 기존 피드백을 수정합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "피드백 저장 성공",
+                    content = @Content(schema = @Schema(implementation = JudgeFeedbackResponse.class))),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "다른 커플의 판결문",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "판결문을 찾을 수 없음",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @PostMapping("/{judgeHistoryId}/feedback")
+    public JudgeFeedbackResponse saveFeedback(
+            Authentication authentication,
+            @PathVariable Long judgeHistoryId,
+            @Valid @RequestBody JudgeFeedbackRequest request
+    ) {
+        return judgeFeedbackService.saveFeedback(currentUserId(authentication), judgeHistoryId, request);
     }
 
     private Long currentUserId(Authentication authentication) {

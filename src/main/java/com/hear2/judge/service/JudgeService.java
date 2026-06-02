@@ -9,6 +9,7 @@ import com.hear2.emotion.enums.RiskLevel;
 import com.hear2.emotion.repository.EmotionAnalysisRepository;
 import com.hear2.judge.client.JudgeAnalysisClient;
 import com.hear2.judge.dto.ConflictPatternResponse;
+import com.hear2.judge.dto.JudgeFeedbackSummary;
 import com.hear2.judge.dto.JudgeFastApiMessage;
 import com.hear2.judge.dto.JudgeFastApiRequest;
 import com.hear2.judge.dto.JudgeHistoryResponse;
@@ -42,6 +43,7 @@ public class JudgeService {
     private final JudgeHistoryRepository judgeHistoryRepository;
     private final JudgeAnalysisClient judgeAnalysisClient;
     private final ChatParticipantResolver chatParticipantResolver;
+    private final JudgeFeedbackService judgeFeedbackService;
 
     @Transactional
     public JudgeResponse judge(Long currentUserId, JudgeRequest request) {
@@ -101,13 +103,13 @@ public class JudgeService {
                 conflictType
         );
 
-        return JudgeResponse.from(savedHistory, sameConflictCount);
+        return JudgeResponse.from(savedHistory, sameConflictCount, JudgeFeedbackSummary.empty());
     }
 
     @Transactional(readOnly = true)
     public List<JudgeHistoryResponse> getHistories(Long currentUserId) {
         ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
-        return findHistories(context.coupleId());
+        return findHistories(context.coupleId(), currentUserId);
     }
 
     @Transactional(readOnly = true)
@@ -116,10 +118,19 @@ public class JudgeService {
         return findPatterns(context.coupleId());
     }
 
-    private List<JudgeHistoryResponse> findHistories(Long coupleId) {
-        return judgeHistoryRepository.findByCoupleIdOrderByCreatedAtDesc(coupleId)
+    private List<JudgeHistoryResponse> findHistories(Long coupleId, Long currentUserId) {
+        List<JudgeHistory> histories = judgeHistoryRepository.findByCoupleIdOrderByCreatedAtDesc(coupleId);
+        Map<Long, JudgeFeedbackSummary> feedbackByHistoryId = judgeFeedbackService.findFeedbackByJudgeHistoryIdsAndUserId(
+                histories.stream().map(JudgeHistory::getId).toList(),
+                currentUserId
+        );
+
+        return histories
                 .stream()
-                .map(JudgeHistoryResponse::from)
+                .map(history -> JudgeHistoryResponse.from(
+                        history,
+                        feedbackByHistoryId.getOrDefault(history.getId(), JudgeFeedbackSummary.empty())
+                ))
                 .toList();
     }
 
