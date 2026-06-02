@@ -75,6 +75,15 @@ public class JudgeResponse {
     @Schema(description = "판결 생성 시각", example = "2026-05-09T16:30:00")
     private LocalDateTime createdAt;
 
+    @Schema(description = "현재 로그인 사용자가 이 판결문에 피드백을 남겼는지 여부", example = "false")
+    private Boolean feedbackSubmitted;
+
+    @Schema(description = "현재 로그인 사용자의 만족 여부. 피드백이 없으면 null입니다.", example = "true", nullable = true)
+    private Boolean satisfied;
+
+    @Schema(description = "현재 로그인 사용자의 추가 의견. 피드백이 없거나 의견이 없으면 null입니다.", example = "상대방 입장을 잘 설명해줘서 도움이 되었어요.", nullable = true)
+    private String feedbackText;
+
     @JsonIgnore
     public ConflictType resolvedConflictType() {
         return conflictType == null ? ConflictType.OTHER : conflictType;
@@ -86,6 +95,10 @@ public class JudgeResponse {
     }
 
     public static JudgeResponse from(JudgeHistory history, Long sameConflictCount) {
+        return from(history, sameConflictCount, JudgeFeedbackSummary.empty());
+    }
+
+    public static JudgeResponse from(JudgeHistory history, Long sameConflictCount, JudgeFeedbackSummary feedback) {
         return JudgeResponse.builder()
                 .cardType("AI_JUDGE")
                 .historyId(history.getId())
@@ -101,6 +114,9 @@ public class JudgeResponse {
                 .judgeTone(history.getJudgeTone())
                 .sameConflictCount(sameConflictCount)
                 .createdAt(history.getCreatedAt())
+                .feedbackSubmitted(feedback.feedbackSubmitted())
+                .satisfied(feedback.satisfied())
+                .feedbackText(feedback.feedbackText())
                 .build();
     }
 }
