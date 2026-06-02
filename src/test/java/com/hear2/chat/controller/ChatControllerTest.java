@@ -1,6 +1,7 @@
 package com.hear2.chat.controller;
 
 import com.hear2.chat.entity.ChatMessage;
+import com.hear2.chat.entity.MessageType;
 import com.hear2.chat.repository.ChatMessageRepository;
 import com.hear2.chat.service.ChatMediaStorageService;
 import com.hear2.character.repository.CharacterExpHistoryRepository;
@@ -9,6 +10,9 @@ import com.hear2.character.support.CharacterExpSourceType;
 import com.hear2.couple.entity.CoupleMember;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.emotion.dto.EmotionAnalysisResponse;
+import com.hear2.emotion.entity.EmotionAnalysis;
+import com.hear2.emotion.repository.EmotionAnalysisFeedbackRepository;
+import com.hear2.emotion.repository.EmotionAnalysisRepository;
 import com.hear2.emotion.enums.EmotionType;
 import com.hear2.emotion.enums.RiskLevel;
 import com.hear2.emotion.service.EmotionAnalysisService;
@@ -36,6 +40,7 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -59,6 +64,12 @@ class ChatControllerTest {
     @Autowired
     private ChatMessageRepository chatMessageRepository;
 
+    @Autowired
+    private EmotionAnalysisRepository emotionAnalysisRepository;
+
+    @Autowired
+    private EmotionAnalysisFeedbackRepository emotionAnalysisFeedbackRepository;
+
     @MockitoBean
     private EmotionAnalysisService emotionAnalysisService;
 
@@ -77,6 +88,8 @@ class ChatControllerTest {
     @BeforeEach
     void setUp() {
         reset(emotionAnalysisService, characterService, characterExpHistoryRepository, chatMediaStorageService);
+        emotionAnalysisFeedbackRepository.deleteAll();
+        emotionAnalysisRepository.deleteAll();
         chatMessageRepository.deleteAll();
         coupleMemberRepository.deleteAll();
         userRepository.deleteAll();
@@ -181,6 +194,222 @@ class ChatControllerTest {
                 .andExpect(jsonPath("$.judgeAvailable").value(false));
 
         assertThat(chatMessageRepository.countByCoupleId(1L)).isEqualTo(1L);
+    }
+
+    @Test
+    void saveEmotionFeedbackStoresFeedbackForAnalyzedMessage() throws Exception {
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .coupleId(1L)
+                .senderId(sender.getUserId())
+                .receiverId(receiver.getUserId())
+                .content("기분이 좀 가라앉았어")
+                .messageType(MessageType.TEXT)
+                .build());
+        emotionAnalysisRepository.save(EmotionAnalysis.builder()
+                .message(message)
+                .emotionType(EmotionType.SAD)
+                .emotionScore(0.88)
+                .negativeScore(0.64)
+                .emotionEmoji("😢")
+                .riskLevel(RiskLevel.NONE)
+                .riskDetected(false)
+                .build());
+
+        mockMvc.perform(post("/api/v1/chats/messages/{messageId}/emotion-feedback", message.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "isCorrect": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.messageId").value(message.getId()))
+                .andExpect(jsonPath("$.isCorrect").value(true));
+
+        assertThat(emotionAnalysisFeedbackRepository.findAll()).hasSize(1);
+        assertThat(emotionAnalysisFeedbackRepository.findAll().get(0).getIsCorrect()).isTrue();
+    }
+
+    @Test
+    void saveEmotionFeedbackUpdatesExistingFeedbackForSameUser() throws Exception {
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .coupleId(1L)
+                .senderId(sender.getUserId())
+                .receiverId(receiver.getUserId())
+                .content("기분이 좀 가라앉았어")
+                .messageType(MessageType.TEXT)
+                .build());
+        emotionAnalysisRepository.save(EmotionAnalysis.builder()
+                .message(message)
+                .emotionType(EmotionType.SAD)
+                .emotionScore(0.88)
+                .negativeScore(0.64)
+                .emotionEmoji("😢")
+                .riskLevel(RiskLevel.NONE)
+                .riskDetected(false)
+                .build());
+
+        mockMvc.perform(post("/api/v1/chats/messages/{messageId}/emotion-feedback", message.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "isCorrect": true
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/chats/messages/{messageId}/emotion-feedback", message.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "isCorrect": false
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isCorrect").value(false));
+
+        assertThat(emotionAnalysisFeedbackRepository.findAll()).hasSize(1);
+        assertThat(emotionAnalysisFeedbackRepository.findAll().get(0).getIsCorrect()).isFalse();
+    }
+
+    @Test
+    void saveEmotionFeedbackRejectsMessageFromOtherCouple() throws Exception {
+        User outsider = userRepository.save(User.builder()
+                .email("chat-outsider@example.com")
+                .password("encoded-password")
+                .nickname("outsider")
+                .provider("LOCAL")
+                .build());
+        User outsiderPartner = userRepository.save(User.builder()
+                .email("chat-outsider-partner@example.com")
+                .password("encoded-password")
+                .nickname("outsiderPartner")
+                .provider("LOCAL")
+                .build());
+        coupleMemberRepository.save(CoupleMember.builder()
+                .coupleId(2L)
+                .userId(outsider.getUserId())
+                .role("OWNER")
+                .build());
+        coupleMemberRepository.save(CoupleMember.builder()
+                .coupleId(2L)
+                .userId(outsiderPartner.getUserId())
+                .role("PARTNER")
+                .build());
+
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .coupleId(2L)
+                .senderId(outsider.getUserId())
+                .receiverId(outsiderPartner.getUserId())
+                .content("다른 커플 메시지")
+                .messageType(MessageType.TEXT)
+                .build());
+        emotionAnalysisRepository.save(EmotionAnalysis.builder()
+                .message(message)
+                .emotionType(EmotionType.NEUTRAL)
+                .emotionScore(0.51)
+                .negativeScore(0.12)
+                .emotionEmoji("😐")
+                .riskLevel(RiskLevel.NONE)
+                .riskDetected(false)
+                .build());
+
+        mockMvc.perform(post("/api/v1/chats/messages/{messageId}/emotion-feedback", message.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "isCorrect": true
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void saveEmotionFeedbackRejectsMessageWithoutEmotionAnalysis() throws Exception {
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .coupleId(1L)
+                .senderId(sender.getUserId())
+                .receiverId(receiver.getUserId())
+                .content("분석 결과가 없는 메시지")
+                .messageType(MessageType.TEXT)
+                .build());
+
+        mockMvc.perform(post("/api/v1/chats/messages/{messageId}/emotion-feedback", message.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "isCorrect": true
+                                }
+                                """))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void saveEmotionFeedbackRejectsImageMessage() throws Exception {
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .coupleId(1L)
+                .senderId(sender.getUserId())
+                .receiverId(receiver.getUserId())
+                .content("")
+                .messageType(MessageType.IMAGE)
+                .mediaUrl("https://example.com/chat.png")
+                .build());
+
+        mockMvc.perform(post("/api/v1/chats/messages/{messageId}/emotion-feedback", message.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "isCorrect": true
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getMessagesIncludesCurrentUsersEmotionFeedback() throws Exception {
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .coupleId(1L)
+                .senderId(sender.getUserId())
+                .receiverId(receiver.getUserId())
+                .content("기분이 좀 가라앉았어")
+                .messageType(MessageType.TEXT)
+                .build());
+        emotionAnalysisRepository.save(EmotionAnalysis.builder()
+                .message(message)
+                .emotionType(EmotionType.SAD)
+                .emotionScore(0.88)
+                .negativeScore(0.64)
+                .emotionEmoji("😢")
+                .riskLevel(RiskLevel.NONE)
+                .riskDetected(false)
+                .build());
+        emotionAnalysisFeedbackRepository.save(com.hear2.emotion.entity.EmotionAnalysisFeedback.builder()
+                .message(message)
+                .analysis(emotionAnalysisRepository.findByMessageId(message.getId()).orElseThrow())
+                .userId(sender.getUserId())
+                .isCorrect(true)
+                .build());
+        when(emotionAnalysisService.findByMessageIds(any()))
+                .thenReturn(java.util.Map.of(message.getId(), EmotionAnalysisResponse.builder()
+                        .emotionType(EmotionType.SAD)
+                        .emotionScore(0.88)
+                        .negativeScore(0.64)
+                        .emotionEmoji("😢")
+                        .riskLevel(RiskLevel.NONE)
+                        .riskDetected(false)
+                        .build()));
+
+        mockMvc.perform(get("/api/v1/chats/messages")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].emotionEmoji").value("😢"))
+                .andExpect(jsonPath("$[0].emotionFeedback").value(true));
     }
 
     private String bearerToken(Long userId) {
