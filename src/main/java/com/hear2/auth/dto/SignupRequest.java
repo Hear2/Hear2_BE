@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+
 @Getter
 @NoArgsConstructor
 public class SignupRequest {
@@ -18,6 +20,10 @@ public class SignupRequest {
 
     @NotBlank
     private String nickname;
+
+    private LocalDate birthday;
+
+    private String gender;
 
     private String profileImage;
 
