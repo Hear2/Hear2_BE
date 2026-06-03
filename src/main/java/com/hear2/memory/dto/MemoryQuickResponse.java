@@ -1,6 +1,7 @@
 package com.hear2.memory.dto;
 
 import com.hear2.memory.entity.Memory;
+import com.hear2.memory.entity.MemoryAiAnalysisStatus;
 import com.hear2.memory.entity.MemoryTagSource;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
@@ -19,6 +20,8 @@ public class MemoryQuickResponse {
     private String imageUrl;
     private List<String> imageUrls;
     private List<MemoryPhotoResponse> photos;
+    private MemoryAiAnalysisStatus aiAnalysisStatus;
+    private MemoryResponse.UploadedBy uploadedBy;
     private String aiPlace;
     private String aiTime;
     private List<String> aiTags;
@@ -30,7 +33,15 @@ public class MemoryQuickResponse {
     }
 
     public static MemoryQuickResponse from(Memory memory, Function<String, String> photoUrlResolver) {
-        MemoryResponse memoryResponse = MemoryResponse.from(memory, photoUrlResolver);
+        return from(memory, photoUrlResolver, uploaderId -> null);
+    }
+
+    public static MemoryQuickResponse from(
+            Memory memory,
+            Function<String, String> photoUrlResolver,
+            Function<Long, MemoryResponse.UploadedBy> uploaderResolver
+    ) {
+        MemoryResponse memoryResponse = MemoryResponse.from(memory, photoUrlResolver, uploaderResolver);
 
         return MemoryQuickResponse.builder()
                 .id(memory.getId())
@@ -39,6 +50,8 @@ public class MemoryQuickResponse {
                         .map(MemoryPhotoResponse::getUrl)
                         .toList())
                 .photos(memoryResponse.getPhotos())
+                .aiAnalysisStatus(memory.getAiAnalysisStatus())
+                .uploadedBy(memoryResponse.getUploadedBy())
                 .aiPlace(memory.getPhotoMetadata() == null ? null : memory.getPhotoMetadata().getLocationName())
                 .aiTime(resolveAiTime(memory))
                 .aiTags(memory.getAiTags().stream()

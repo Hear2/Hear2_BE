@@ -33,6 +33,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -65,6 +67,7 @@ public class MemoryService {
     private final MemoryAiAnalysisService memoryAiAnalysisService;
     private final MemoryPhotoMetadataExtractor memoryPhotoMetadataExtractor;
     private final MemoryPhotoSanitizer memoryPhotoSanitizer;
+    private final MemoryAiAnalysisWorker memoryAiAnalysisWorker;
     private final KakaoLocalService kakaoLocalService;
     private final CoupleMemberRepository coupleMemberRepository;
     private final MemoryCommentRepository memoryCommentRepository;
@@ -148,11 +151,11 @@ public class MemoryService {
                 resolvedLocation.addressName()
         ));
 
-        applyAiAnalysis(memory, memoryPhotos, request, resolvedLocation);
         applyUserTags(memory, request.getUserTags());
 
         Memory savedMemory = memoryRepository.save(memory);
         grantMemoryExp(coupleId, savedMemory.getId());
+        requestQuickMemoryAiAnalysis(savedMemory.getId());
 
         return toQuickResponse(savedMemory);
     }
@@ -308,11 +311,7 @@ public class MemoryService {
         Long coupleId = resolveCoupleId(currentUserId);
         Memory memory = findMemory(coupleId, memoryId);
 
-        memory.getPhotos().stream()
-                .map(photo -> photo.getStoredPhotoPath())
-                .filter(path -> !path.equals(memory.getStoredPhotoPath()))
-                .forEach(memoryPhotoStorageService::delete);
-        memoryPhotoStorageService.delete(memory.getStoredPhotoPath());
+        referencedPhotoPaths(memory).forEach(path -> deleteStoredPhotoIfUnreferenced(coupleId, memoryId, path));
         memoryCommentRepository.deleteByCoupleIdAndMemoryId(coupleId, memoryId);
         memoryRepository.delete(memory);
     }
@@ -441,6 +440,24 @@ public class MemoryService {
         }
     }
 
+    private void requestQuickMemoryAiAnalysis(Long memoryId) {
+        if (memoryId == null) {
+            return;
+        }
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            memoryAiAnalysisWorker.analyzeQuickMemory(memoryId);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                memoryAiAnalysisWorker.analyzeQuickMemory(memoryId);
+            }
+        });
+    }
+
     private List<MemoryAiTag> toAiTags(MemoryAiAnalysisResult analysisResult) {
         if (analysisResult == null || analysisResult.getTags() == null) {
             return List.of();
@@ -506,23 +523,28 @@ public class MemoryService {
     }
 
     private MemoryResponse toMemoryResponse(Memory memory) {
-        MemoryResponse response = MemoryResponse.from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory));
-        response.attachUploadedBy(resolveUploadedBy(memory.getUploaderId()));
-        return response;
+        return MemoryResponse.from(
+                memory,
+                storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory),
+                this::resolveUploadedBy
+        );
     }
 
     private MemoryResponse toMemoryResponse(Memory memory, List<MemoryCommentResponse> comments) {
-        MemoryResponse response = MemoryResponse.from(
+        return MemoryResponse.from(
                 memory,
                 comments,
-                storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory)
+                storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory),
+                this::resolveUploadedBy
         );
-        response.attachUploadedBy(resolveUploadedBy(memory.getUploaderId()));
-        return response;
     }
 
     private MemoryQuickResponse toQuickResponse(Memory memory) {
-        return MemoryQuickResponse.from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory));
+        return MemoryQuickResponse.from(
+                memory,
+                storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory),
+                this::resolveUploadedBy
+        );
     }
 
     private String resolveCoverPhotoUrl(Memory memory) {
@@ -554,6 +576,44 @@ public class MemoryService {
             );
         }
         return fallbackUrl;
+    }
+
+    private List<String> referencedPhotoPaths(Memory memory) {
+        LinkedHashSet<String> paths = new LinkedHashSet<>();
+        if (memory == null) {
+            return List.of();
+        }
+
+        if (StringUtils.hasText(memory.getStoredPhotoPath())) {
+            paths.add(memory.getStoredPhotoPath());
+        }
+        if (memory.getPhotos() != null) {
+            memory.getPhotos().stream()
+                    .map(MemoryPhoto::getStoredPhotoPath)
+                    .filter(StringUtils::hasText)
+                    .forEach(paths::add);
+        }
+        return List.copyOf(paths);
+    }
+
+    private void deleteStoredPhotoIfUnreferenced(Long coupleId, Long deletedMemoryId, String storedPhotoPath) {
+        long remainingReferences = memoryRepository.countOtherReferencesByCoupleIdAndStoredPhotoPath(
+                coupleId,
+                deletedMemoryId,
+                storedPhotoPath
+        );
+        if (remainingReferences > 0) {
+            log.info(
+                    "Memory photo physical delete skipped because other memories still reference it. coupleId={}, deletedMemoryId={}, objectKey={}, remainingReferences={}",
+                    coupleId,
+                    deletedMemoryId,
+                    storedPhotoPath,
+                    remainingReferences
+            );
+            return;
+        }
+
+        memoryPhotoStorageService.delete(storedPhotoPath);
     }
 
     private Memory findMemory(Long coupleId, Long memoryId) {
