@@ -13,6 +13,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -36,6 +37,18 @@ public class User {
 
     @Column(name = "nickname")
     private String nickname;
+
+    @Column(name = "birthday")
+    private LocalDate birthday;
+
+    @Column(name = "gender")
+    private String gender;
+
+    @Column(name = "intro")
+    private String intro;
+
+    @Column(name = "phone")
+    private String phone;
 
     @Column(name = "profile_image")
     private String profileImage;
@@ -71,5 +84,13 @@ public class User {
 
     public void linkProviderId(String providerId) {
         this.providerId = providerId;
+    }
+
+    public void updateProfile(String nickname, LocalDate birthday, String gender, String intro, String phone) {
+        this.nickname = nickname;
+        this.birthday = birthday;
+        this.gender = gender;
+        this.intro = intro;
+        this.phone = phone;
     }
 }

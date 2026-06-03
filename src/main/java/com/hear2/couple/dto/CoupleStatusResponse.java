@@ -23,6 +23,8 @@ public class CoupleStatusResponse {
 
     private long memberCount;
 
+    private CouplePartnerResponse partner;
+
     public static CoupleStatusResponse disconnected() {
         return CoupleStatusResponse.builder()
                 .connected(false)
@@ -39,6 +41,10 @@ public class CoupleStatusResponse {
     }
 
     public static CoupleStatusResponse from(Couple couple, long memberCount) {
+        return from(couple, memberCount, null);
+    }
+
+    public static CoupleStatusResponse from(Couple couple, long memberCount, CouplePartnerResponse partner) {
         return CoupleStatusResponse.builder()
                 .connected(memberCount >= 2)
                 .coupleId(couple.getCoupleId())
@@ -46,6 +52,7 @@ public class CoupleStatusResponse {
                 .startDate(couple.getStartDate())
                 .createdAt(couple.getCreatedAt())
                 .memberCount(memberCount)
+                .partner(partner)
                 .build();
     }
 }
