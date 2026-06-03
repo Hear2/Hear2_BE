@@ -4,11 +4,13 @@ import com.hear2.emotion.enums.RiskLevel;
 import com.hear2.judge.entity.JudgeHistory;
 import com.hear2.judge.enums.ConflictType;
 import com.hear2.judge.enums.JudgeTone;
+import com.hear2.judge.support.JudgeParticipantFormatter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Getter
 @Builder
@@ -27,11 +29,17 @@ public class JudgeHistoryResponse {
     @Schema(description = "판결을 유도한 메시지의 리스크 단계", example = "WARNING")
     private RiskLevel triggerRiskLevel;
 
-    @Schema(description = "A측 입장 요약")
+    @Schema(description = "판결문에 공통 노출되는 첫 번째 참여자 입장 요약")
     private String summaryA;
 
-    @Schema(description = "B측 입장 요약")
+    @Schema(description = "판결문에 공통 노출되는 두 번째 참여자 입장 요약")
     private String summaryB;
+
+    @Schema(description = "현재 로그인 사용자의 표시 이름. 이름이 없으면 '나'가 반환됩니다.", example = "승현")
+    private String userName;
+
+    @Schema(description = "상대방의 표시 이름. 이름이 없으면 '상대방'이 반환됩니다.", example = "지민")
+    private String partnerName;
 
     @Schema(description = "판결문")
     private String judgement;
@@ -41,6 +49,12 @@ public class JudgeHistoryResponse {
 
     @Schema(description = "바로 전송할 수 있는 화해 메시지")
     private String reconciliationMessage;
+
+    @Schema(description = "판결 요청자용 화해 메시지")
+    private String requestedReconciliationMessage;
+
+    @Schema(description = "상대방용 화해 메시지")
+    private String partnerReconciliationMessage;
 
     @Schema(description = "갈등 유형", example = "COMMUNICATION")
     private ConflictType conflictType;
@@ -60,21 +74,48 @@ public class JudgeHistoryResponse {
     @Schema(description = "현재 로그인 사용자의 추가 의견. 피드백이 없거나 의견이 없으면 null입니다.", example = "조금 더 구체적인 해결책이 있었으면 좋겠어요.", nullable = true)
     private String feedbackText;
 
-    public static JudgeHistoryResponse from(JudgeHistory history) {
-        return from(history, JudgeFeedbackSummary.empty());
+    public static JudgeHistoryResponse from(
+            JudgeHistory history,
+            Long currentUserId,
+            String userName,
+            String partnerName,
+            String summaryAName,
+            String summaryBName
+    ) {
+        return from(
+                history,
+                JudgeFeedbackSummary.empty(),
+                currentUserId,
+                userName,
+                partnerName,
+                summaryAName,
+                summaryBName
+        );
     }
 
-    public static JudgeHistoryResponse from(JudgeHistory history, JudgeFeedbackSummary feedback) {
+    public static JudgeHistoryResponse from(
+            JudgeHistory history,
+            JudgeFeedbackSummary feedback,
+            Long currentUserId,
+            String userName,
+            String partnerName,
+            String summaryAName,
+            String summaryBName
+    ) {
         return JudgeHistoryResponse.builder()
                 .id(history.getId())
                 .coupleId(history.getCoupleId())
                 .triggerMessageId(history.getTriggerMessageId())
                 .triggerRiskLevel(history.getTriggerRiskLevel())
-                .summaryA(history.getSummaryA())
-                .summaryB(history.getSummaryB())
+                .summaryA(JudgeParticipantFormatter.formatSharedSummary(history.getSummaryA(), summaryAName))
+                .summaryB(JudgeParticipantFormatter.formatSharedSummary(history.getSummaryB(), summaryBName))
+                .userName(userName)
+                .partnerName(partnerName)
                 .judgement(history.getJudgement())
                 .solution(history.getSolution())
-                .reconciliationMessage(history.getReconciliationMessage())
+                .reconciliationMessage(resolveReconciliationMessage(history, currentUserId))
+                .requestedReconciliationMessage(history.getRequestedReconciliationMessage())
+                .partnerReconciliationMessage(history.getPartnerReconciliationMessage())
                 .conflictType(history.getConflictType())
                 .judgeTone(history.getJudgeTone())
                 .createdAt(history.getCreatedAt())
@@ -82,5 +123,27 @@ public class JudgeHistoryResponse {
                 .satisfied(feedback.satisfied())
                 .feedbackText(feedback.feedbackText())
                 .build();
+    }
+
+    private static String resolveReconciliationMessage(JudgeHistory history, Long currentUserId) {
+        if (Objects.equals(currentUserId, history.getRequestedByUserId())
+                && hasText(history.getRequestedReconciliationMessage())) {
+            return history.getRequestedReconciliationMessage().trim();
+        }
+        if (Objects.equals(currentUserId, history.getPartnerUserId())
+                && hasText(history.getPartnerReconciliationMessage())) {
+            return history.getPartnerReconciliationMessage().trim();
+        }
+        if (hasText(history.getRequestedReconciliationMessage())) {
+            return history.getRequestedReconciliationMessage().trim();
+        }
+        if (hasText(history.getPartnerReconciliationMessage())) {
+            return history.getPartnerReconciliationMessage().trim();
+        }
+        return history.getReconciliationMessage();
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

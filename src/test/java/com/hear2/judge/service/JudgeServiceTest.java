@@ -18,6 +18,8 @@ import com.hear2.judge.entity.JudgeHistory;
 import com.hear2.judge.enums.ConflictType;
 import com.hear2.judge.enums.JudgeTone;
 import com.hear2.judge.repository.JudgeHistoryRepository;
+import com.hear2.user.entity.User;
+import com.hear2.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
@@ -41,13 +43,15 @@ class JudgeServiceTest {
     private final JudgeAnalysisClient judgeAnalysisClient = mock(JudgeAnalysisClient.class);
     private final ChatParticipantResolver chatParticipantResolver = mock(ChatParticipantResolver.class);
     private final JudgeFeedbackService judgeFeedbackService = mock(JudgeFeedbackService.class);
+    private final UserRepository userRepository = mock(UserRepository.class);
     private final JudgeService judgeService = new JudgeService(
             chatMessageRepository,
             emotionAnalysisRepository,
             judgeHistoryRepository,
             judgeAnalysisClient,
             chatParticipantResolver,
-            judgeFeedbackService
+            judgeFeedbackService,
+            userRepository
     );
 
     @Test
@@ -67,6 +71,11 @@ class JudgeServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(judgeHistoryRepository.countByCoupleIdAndConflictType(1L, ConflictType.COMMUNICATION))
                 .thenReturn(1L);
+        when(userRepository.findAllById(any()))
+                .thenReturn(List.of(
+                        user(10L, "승현"),
+                        user(11L, "지민")
+                ));
 
         JudgeRequest request = new JudgeRequest();
         request.setTriggerMessageId(100L);
@@ -77,8 +86,29 @@ class JudgeServiceTest {
         verify(judgeAnalysisClient).requestJudgement(captor.capture());
         assertThat(captor.getValue().getCoupleId()).isEqualTo(1L);
         assertThat(captor.getValue().getRequestedByUserId()).isEqualTo(10L);
+        assertThat(captor.getValue().getPartnerUserId()).isEqualTo(11L);
+        assertThat(captor.getValue().getRequestedByName()).isEqualTo("승현");
+        assertThat(captor.getValue().getPartnerName()).isEqualTo("지민");
+        assertThat(response.getSummaryA()).isEqualTo("승현은 상대의 말을 듣고 싶었습니다.");
+        assertThat(response.getSummaryB()).isEqualTo("지민은 충분히 설명했다고 느꼈습니다.");
+        assertThat(response.getReconciliationMessage()).isEqualTo("내 말이 날카로웠어. 왜 서운했는지 차분히 다시 듣고 싶어.");
+        assertThat(response.getRequestedReconciliationMessage()).isEqualTo("내 말이 날카로웠어. 왜 서운했는지 차분히 다시 듣고 싶어.");
+        assertThat(response.getPartnerReconciliationMessage()).isEqualTo("내가 바로 설명만 하려 했네. 어떤 지점이 가장 아팠는지 먼저 듣고 싶어.");
+        assertThat(response.getUserName()).isEqualTo("승현");
+        assertThat(response.getPartnerName()).isEqualTo("지민");
         assertThat(response.getFeedbackSubmitted()).isFalse();
         assertThat(response.getSatisfied()).isNull();
+
+        ArgumentCaptor<JudgeHistory> historyCaptor = ArgumentCaptor.forClass(JudgeHistory.class);
+        verify(judgeHistoryRepository).save(historyCaptor.capture());
+        assertThat(historyCaptor.getValue().getRequestedByUserId()).isEqualTo(10L);
+        assertThat(historyCaptor.getValue().getPartnerUserId()).isEqualTo(11L);
+        assertThat(historyCaptor.getValue().getSummaryA()).isEqualTo("상대의 말을 듣고 싶었습니다.");
+        assertThat(historyCaptor.getValue().getSummaryB()).isEqualTo("충분히 설명했다고 느꼈습니다.");
+        assertThat(historyCaptor.getValue().getRequestedReconciliationMessage())
+                .isEqualTo("내 말이 날카로웠어. 왜 서운했는지 차분히 다시 듣고 싶어.");
+        assertThat(historyCaptor.getValue().getPartnerReconciliationMessage())
+                .isEqualTo("내가 바로 설명만 하려 했네. 어떤 지점이 가장 아팠는지 먼저 듣고 싶어.");
     }
 
     @Test
@@ -100,7 +130,13 @@ class JudgeServiceTest {
         JudgeHistory history = JudgeHistory.builder()
                 .id(7L)
                 .coupleId(1L)
+                .requestedByUserId(10L)
+                .partnerUserId(11L)
+                .summaryA("서운했습니다.")
+                .summaryB("충분히 설명했다고 느꼈습니다.")
                 .judgement("judgement")
+                .requestedReconciliationMessage("내가 먼저 차분히 말해볼게.")
+                .partnerReconciliationMessage("내가 먼저 감정을 인정해볼게.")
                 .createdAt(LocalDateTime.now())
                 .build();
         when(chatParticipantResolver.resolve(10L))
@@ -113,10 +149,22 @@ class JudgeServiceTest {
                         .satisfied(true)
                         .feedbackText("helpful")
                         .build()));
+        when(userRepository.findAllById(any()))
+                .thenReturn(List.of(
+                        user(10L, "민수"),
+                        user(11L, "지연")
+                ));
 
         List<JudgeHistoryResponse> responses = judgeService.getHistories(10L);
 
         assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).getSummaryA()).isEqualTo("민수는 서운했습니다.");
+        assertThat(responses.get(0).getSummaryB()).isEqualTo("지연은 충분히 설명했다고 느꼈습니다.");
+        assertThat(responses.get(0).getReconciliationMessage()).isEqualTo("내가 먼저 차분히 말해볼게.");
+        assertThat(responses.get(0).getRequestedReconciliationMessage()).isEqualTo("내가 먼저 차분히 말해볼게.");
+        assertThat(responses.get(0).getPartnerReconciliationMessage()).isEqualTo("내가 먼저 감정을 인정해볼게.");
+        assertThat(responses.get(0).getUserName()).isEqualTo("민수");
+        assertThat(responses.get(0).getPartnerName()).isEqualTo("지연");
         assertThat(responses.get(0).getFeedbackSubmitted()).isTrue();
         assertThat(responses.get(0).getSatisfied()).isTrue();
         assertThat(responses.get(0).getFeedbackText()).isEqualTo("helpful");
@@ -147,13 +195,21 @@ class JudgeServiceTest {
 
     private JudgeResponse judgeResponse() {
         return JudgeResponse.builder()
-                .summaryA("A")
-                .summaryB("B")
+                .summaryA("승현은 상대의 말을 듣고 싶었습니다.")
+                .summaryB("지민은 충분히 설명했다고 느꼈습니다.")
                 .judgement("Judgement")
                 .solution("Solution")
-                .reconciliationMessage("Message")
+                .requestedReconciliationMessage("내 말이 날카로웠어. 왜 서운했는지 차분히 다시 듣고 싶어.")
+                .partnerReconciliationMessage("내가 바로 설명만 하려 했네. 어떤 지점이 가장 아팠는지 먼저 듣고 싶어.")
                 .conflictType(ConflictType.COMMUNICATION)
                 .judgeTone(JudgeTone.WITTY)
+                .build();
+    }
+
+    private User user(Long id, String nickname) {
+        return User.builder()
+                .userId(id)
+                .nickname(nickname)
                 .build();
     }
 }

@@ -15,5 +15,11 @@ public class JudgeFastApiRequest {
 
     private Long requestedByUserId;
 
+    private Long partnerUserId;
+
+    private String requestedByName;
+
+    private String partnerName;
+
     private List<JudgeFastApiMessage> messages;
 }

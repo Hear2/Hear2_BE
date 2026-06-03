@@ -19,7 +19,10 @@ import com.hear2.judge.entity.JudgeHistory;
 import com.hear2.judge.enums.ConflictType;
 import com.hear2.judge.enums.JudgeTone;
 import com.hear2.judge.repository.JudgeHistoryRepository;
+import com.hear2.judge.support.JudgeParticipantFormatter;
 import com.hear2.judge.support.JudgeTriggerPolicy;
+import com.hear2.user.entity.User;
+import com.hear2.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,8 +32,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -44,6 +49,7 @@ public class JudgeService {
     private final JudgeAnalysisClient judgeAnalysisClient;
     private final ChatParticipantResolver chatParticipantResolver;
     private final JudgeFeedbackService judgeFeedbackService;
+    private final UserRepository userRepository;
 
     @Transactional
     public JudgeResponse judge(Long currentUserId, JudgeRequest request) {
@@ -72,11 +78,15 @@ public class JudgeService {
         List<JudgeFastApiMessage> fastApiMessages = recentMessages.stream()
                 .map(message -> toFastApiMessage(message, emotionsByMessageId.get(message.getId())))
                 .toList();
+        ParticipantNames participantNames = resolveParticipantNames(context);
 
         JudgeFastApiRequest fastApiRequest = JudgeFastApiRequest.builder()
                 .coupleId(context.coupleId())
                 .triggerMessageId(request.getTriggerMessageId())
                 .requestedByUserId(context.senderId())
+                .partnerUserId(context.receiverId())
+                .requestedByName(participantNames.sharedUserName())
+                .partnerName(participantNames.sharedPartnerName())
                 .messages(fastApiMessages)
                 .build();
 
@@ -88,12 +98,22 @@ public class JudgeService {
                 JudgeHistory.builder()
                         .coupleId(context.coupleId())
                         .triggerMessageId(request.getTriggerMessageId())
+                        .requestedByUserId(context.senderId())
+                        .partnerUserId(context.receiverId())
                         .triggerRiskLevel(triggerRiskLevel)
-                        .summaryA(response.getSummaryA())
-                        .summaryB(response.getSummaryB())
+                        .summaryA(JudgeParticipantFormatter.normalizeRequesterSummary(
+                                response.getSummaryA(),
+                                participantNames.sharedUserName()
+                        ))
+                        .summaryB(JudgeParticipantFormatter.normalizePartnerSummary(
+                                response.getSummaryB(),
+                                participantNames.sharedPartnerName()
+                        ))
                         .judgement(response.getJudgement())
                         .solution(response.getSolution())
-                        .reconciliationMessage(response.getReconciliationMessage())
+                        .reconciliationMessage(response.getRequestedReconciliationMessage())
+                        .requestedReconciliationMessage(response.getRequestedReconciliationMessage())
+                        .partnerReconciliationMessage(response.getPartnerReconciliationMessage())
                         .conflictType(conflictType)
                         .judgeTone(judgeTone)
                         .build()
@@ -103,13 +123,21 @@ public class JudgeService {
                 conflictType
         );
 
-        return JudgeResponse.from(savedHistory, sameConflictCount, JudgeFeedbackSummary.empty());
+        return JudgeResponse.from(
+                savedHistory,
+                sameConflictCount,
+                currentUserId,
+                participantNames.userName(),
+                participantNames.partnerName(),
+                participantNames.sharedUserName(),
+                participantNames.sharedPartnerName()
+        );
     }
 
     @Transactional(readOnly = true)
     public List<JudgeHistoryResponse> getHistories(Long currentUserId) {
         ChatParticipantResolver.ChatRoomContext context = chatParticipantResolver.resolve(currentUserId);
-        return findHistories(context.coupleId(), currentUserId);
+        return findHistories(context, currentUserId);
     }
 
     @Transactional(readOnly = true)
@@ -118,20 +146,77 @@ public class JudgeService {
         return findPatterns(context.coupleId());
     }
 
-    private List<JudgeHistoryResponse> findHistories(Long coupleId, Long currentUserId) {
-        List<JudgeHistory> histories = judgeHistoryRepository.findByCoupleIdOrderByCreatedAtDesc(coupleId);
+    private List<JudgeHistoryResponse> findHistories(ChatParticipantResolver.ChatRoomContext context, Long currentUserId) {
+        ParticipantNames participantNames = resolveParticipantNames(context);
+        List<JudgeHistory> histories = judgeHistoryRepository.findByCoupleIdOrderByCreatedAtDesc(context.coupleId());
         Map<Long, JudgeFeedbackSummary> feedbackByHistoryId = judgeFeedbackService.findFeedbackByJudgeHistoryIdsAndUserId(
                 histories.stream().map(JudgeHistory::getId).toList(),
                 currentUserId
         );
+        Map<Long, User> usersById = loadUsersById(histories, context);
 
         return histories
                 .stream()
-                .map(history -> JudgeHistoryResponse.from(
-                        history,
-                        feedbackByHistoryId.getOrDefault(history.getId(), JudgeFeedbackSummary.empty())
-                ))
+                .map(history -> {
+                    SharedParticipantNames sharedParticipantNames = resolveSharedParticipantNames(history, usersById);
+                    return JudgeHistoryResponse.from(
+                            history,
+                            feedbackByHistoryId.getOrDefault(history.getId(), JudgeFeedbackSummary.empty()),
+                            currentUserId,
+                            participantNames.userName(),
+                            participantNames.partnerName(),
+                            sharedParticipantNames.summaryAName(),
+                            sharedParticipantNames.summaryBName()
+                    );
+                })
                 .toList();
+    }
+
+    private ParticipantNames resolveParticipantNames(ChatParticipantResolver.ChatRoomContext context) {
+        Map<Long, User> usersById = loadUsersByIds(List.of(context.senderId(), context.receiverId()));
+
+        String userName = resolveDisplayName(usersById.get(context.senderId()), "나");
+        String partnerName = resolveDisplayName(usersById.get(context.receiverId()), "상대방");
+        String sharedUserName = resolveDisplayName(usersById.get(context.senderId()), "한 사람");
+        String sharedPartnerName = resolveDisplayName(usersById.get(context.receiverId()), "다른 한 사람");
+        return new ParticipantNames(userName, partnerName, sharedUserName, sharedPartnerName);
+    }
+
+    private Map<Long, User> loadUsersById(
+            List<JudgeHistory> histories,
+            ChatParticipantResolver.ChatRoomContext context
+    ) {
+        Set<Long> userIds = new HashSet<>();
+        userIds.add(context.senderId());
+        userIds.add(context.receiverId());
+        histories.stream()
+                .map(JudgeHistory::getRequestedByUserId)
+                .filter(id -> id != null)
+                .forEach(userIds::add);
+        histories.stream()
+                .map(JudgeHistory::getPartnerUserId)
+                .filter(id -> id != null)
+                .forEach(userIds::add);
+        return loadUsersByIds(userIds);
+    }
+
+    private Map<Long, User> loadUsersByIds(Iterable<Long> userIds) {
+        return userRepository.findAllById(userIds)
+                .stream()
+                .collect(Collectors.toMap(User::getUserId, Function.identity()));
+    }
+
+    private SharedParticipantNames resolveSharedParticipantNames(JudgeHistory history, Map<Long, User> usersById) {
+        String summaryAName = resolveDisplayName(usersById.get(history.getRequestedByUserId()), "한 사람");
+        String summaryBName = resolveDisplayName(usersById.get(history.getPartnerUserId()), "다른 한 사람");
+        return new SharedParticipantNames(summaryAName, summaryBName);
+    }
+
+    private String resolveDisplayName(User user, String fallback) {
+        if (user != null && StringUtils.hasText(user.getNickname())) {
+            return user.getNickname().trim();
+        }
+        return fallback;
     }
 
     private List<ConflictPatternResponse> findPatterns(Long coupleId) {
@@ -213,5 +298,16 @@ public class JudgeService {
                 .riskLevel(emotion == null ? null : emotion.getRiskLevel())
                 .createdAt(message.getCreatedAt())
                 .build();
+    }
+
+    private record ParticipantNames(
+            String userName,
+            String partnerName,
+            String sharedUserName,
+            String sharedPartnerName
+    ) {
+    }
+
+    private record SharedParticipantNames(String summaryAName, String summaryBName) {
     }
 }
