@@ -186,6 +186,10 @@ class MemoryAuthenticationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").exists())
                 .andExpect(jsonPath("$.data.imageUrl").value(startsWith("/api/v1/memories/items/")))
+                .andExpect(jsonPath("$.data.aiAnalysisStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.photos[0].aiAnalysisStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.uploadedBy.userId").value(user.getUserId()))
+                .andExpect(jsonPath("$.data.uploadedBy.nickname").value("memory-user"))
                 .andExpect(jsonPath("$.data.userTags[0]").value("#우리둘이"))
                 .andExpect(jsonPath("$.data.userTags[1]").value("#특별한날"));
 

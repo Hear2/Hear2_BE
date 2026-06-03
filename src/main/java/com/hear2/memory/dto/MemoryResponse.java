@@ -21,6 +21,7 @@ public class MemoryResponse {
     private Long id;
     private Long coupleId;
     private Long uploaderId;
+    @Schema(description = "업로더 프로필. uploaderId는 기존 호환용으로 유지됩니다.")
     private UploadedBy uploadedBy;
     private String memo;
     private LocalDate memoryDate;
@@ -46,12 +47,24 @@ public class MemoryResponse {
     }
 
     public static MemoryResponse from(Memory memory, Function<String, String> photoUrlResolver) {
+        return from(memory, photoUrlResolver, uploaderId -> null);
+    }
+
+    public static MemoryResponse from(
+            Memory memory,
+            Function<String, String> photoUrlResolver,
+            Function<Long, UploadedBy> uploaderResolver
+    ) {
         String coverPhotoUrl = photoUrlResolver.apply(memory.getStoredPhotoPath());
+        UploadedBy uploadedBy = uploaderResolver == null
+                ? null
+                : uploaderResolver.apply(memory.getUploaderId());
 
         return MemoryResponse.builder()
                 .id(memory.getId())
                 .coupleId(memory.getCoupleId())
                 .uploaderId(memory.getUploaderId())
+                .uploadedBy(uploadedBy)
                 .memo(memory.getMemo())
                 .memoryDate(memory.getMemoryDate())
                 .originalFileName(memory.getOriginalFileName())
@@ -143,6 +156,17 @@ public class MemoryResponse {
                     .profileImage(user.getProfileImage())
                     .build();
         }
+    }
+
+    public static MemoryResponse from(
+            Memory memory,
+            List<MemoryCommentResponse> comments,
+            Function<String, String> photoUrlResolver,
+            Function<Long, UploadedBy> uploaderResolver
+    ) {
+        MemoryResponse response = from(memory, photoUrlResolver, uploaderResolver);
+        response.comments = comments == null ? List.of() : comments;
+        return response;
     }
 
     public static String resolvePhotoUrl(Memory memory) {
