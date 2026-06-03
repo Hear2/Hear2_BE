@@ -28,6 +28,10 @@ public class JudgeHistory {
 
     private Long triggerMessageId;
 
+    private Long requestedByUserId;
+
+    private Long partnerUserId;
+
     @Enumerated(EnumType.STRING)
     private RiskLevel triggerRiskLevel;
 
@@ -45,6 +49,12 @@ public class JudgeHistory {
 
     @Column(columnDefinition = "TEXT")
     private String reconciliationMessage;
+
+    @Column(columnDefinition = "TEXT")
+    private String requestedReconciliationMessage;
+
+    @Column(columnDefinition = "TEXT")
+    private String partnerReconciliationMessage;
 
     @Enumerated(EnumType.STRING)
     private ConflictType conflictType;

@@ -79,9 +79,15 @@ public class JudgeAnalysisClient {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "FastAPI judge response missing solution");
         }
 
-        String reconciliationMessage = StringUtils.hasText(response.getReconciliationMessage())
+        String defaultReconciliationMessage = StringUtils.hasText(response.getReconciliationMessage())
                 ? response.getReconciliationMessage().trim()
                 : response.getSolution().trim();
+        String requestedReconciliationMessage = StringUtils.hasText(response.getRequestedReconciliationMessage())
+                ? response.getRequestedReconciliationMessage().trim()
+                : defaultReconciliationMessage;
+        String partnerReconciliationMessage = StringUtils.hasText(response.getPartnerReconciliationMessage())
+                ? response.getPartnerReconciliationMessage().trim()
+                : defaultReconciliationMessage;
 
         return JudgeResponse.builder()
                 .cardType("AI_JUDGE")
@@ -89,7 +95,9 @@ public class JudgeAnalysisClient {
                 .summaryB(response.getSummaryB().trim())
                 .judgement(response.getJudgement().trim())
                 .solution(response.getSolution().trim())
-                .reconciliationMessage(reconciliationMessage)
+                .reconciliationMessage(requestedReconciliationMessage)
+                .requestedReconciliationMessage(requestedReconciliationMessage)
+                .partnerReconciliationMessage(partnerReconciliationMessage)
                 .conflictType(response.getConflictType() == null ? ConflictType.OTHER : response.getConflictType())
                 .judgeTone(response.getJudgeTone() == null ? JudgeTone.WITTY : response.getJudgeTone())
                 .build();

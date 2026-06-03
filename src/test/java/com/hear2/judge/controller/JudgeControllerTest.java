@@ -208,9 +208,38 @@ class JudgeControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(history.getId()))
+                .andExpect(jsonPath("$[0].userName").value("sender"))
+                .andExpect(jsonPath("$[0].partnerName").value("partner"))
+                .andExpect(jsonPath("$[0].summaryA").value("sender는 입장"))
+                .andExpect(jsonPath("$[0].summaryB").value("partner는 입장"))
                 .andExpect(jsonPath("$[0].feedbackSubmitted").value(true))
                 .andExpect(jsonPath("$[0].satisfied").value(true))
                 .andExpect(jsonPath("$[0].feedbackText").value("도움이 되었어요."));
+    }
+
+    @Test
+    void historiesShowSameJudgementButPersonalizedReconciliationMessageForEachUser() throws Exception {
+        JudgeHistory history = judgeHistoryRepository.save(judgeHistory(1L));
+
+        mockMvc.perform(get("/api/v1/judge/histories")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(sender.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(history.getId()))
+                .andExpect(jsonPath("$[0].summaryA").value("sender는 입장"))
+                .andExpect(jsonPath("$[0].summaryB").value("partner는 입장"))
+                .andExpect(jsonPath("$[0].judgement").value("판결문"))
+                .andExpect(jsonPath("$[0].solution").value("해결책"))
+                .andExpect(jsonPath("$[0].reconciliationMessage").value("내가 먼저 감정을 정리하고 다시 말 걸게. 네가 왜 답답했는지 차분히 듣고 싶어."));
+
+        mockMvc.perform(get("/api/v1/judge/histories")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(partner.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(history.getId()))
+                .andExpect(jsonPath("$[0].summaryA").value("sender는 입장"))
+                .andExpect(jsonPath("$[0].summaryB").value("partner는 입장"))
+                .andExpect(jsonPath("$[0].judgement").value("판결문"))
+                .andExpect(jsonPath("$[0].solution").value("해결책"))
+                .andExpect(jsonPath("$[0].reconciliationMessage").value("내가 설명부터 앞세웠어. 먼저 서운했던 지점을 듣고 같이 풀어가고 싶어."));
     }
 
     private String bearerToken(Long userId) {
@@ -221,11 +250,15 @@ class JudgeControllerTest {
         return JudgeHistory.builder()
                 .coupleId(coupleId)
                 .triggerMessageId(100L)
-                .summaryA("A 입장")
-                .summaryB("B 입장")
+                .requestedByUserId(sender.getUserId())
+                .partnerUserId(partner.getUserId())
+                .summaryA("입장")
+                .summaryB("입장")
                 .judgement("판결문")
                 .solution("해결책")
-                .reconciliationMessage("화해 메시지")
+                .reconciliationMessage("공통 화해 메시지")
+                .requestedReconciliationMessage("내가 먼저 감정을 정리하고 다시 말 걸게. 네가 왜 답답했는지 차분히 듣고 싶어.")
+                .partnerReconciliationMessage("내가 설명부터 앞세웠어. 먼저 서운했던 지점을 듣고 같이 풀어가고 싶어.")
                 .conflictType(ConflictType.COMMUNICATION)
                 .judgeTone(JudgeTone.WITTY)
                 .build();
