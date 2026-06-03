@@ -3,6 +3,7 @@ package com.hear2.memory.dto;
 import com.hear2.memory.entity.Memory;
 import com.hear2.memory.entity.MemoryAiAnalysisStatus;
 import com.hear2.memory.entity.MemoryTagSource;
+import com.hear2.user.entity.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
@@ -20,6 +21,7 @@ public class MemoryResponse {
     private Long id;
     private Long coupleId;
     private Long uploaderId;
+    private UploadedBy uploadedBy;
     private String memo;
     private LocalDate memoryDate;
     private String originalFileName;
@@ -116,6 +118,31 @@ public class MemoryResponse {
         MemoryResponse response = from(memory, photoUrlResolver);
         response.comments = comments == null ? List.of() : comments;
         return response;
+    }
+
+    public void attachUploadedBy(UploadedBy uploadedBy) {
+        this.uploadedBy = uploadedBy;
+    }
+
+    @Getter
+    @Builder
+    public static class UploadedBy {
+
+        private Long userId;
+        private String nickname;
+        private String profileImage;
+
+        public static UploadedBy from(User user) {
+            if (user == null) {
+                return null;
+            }
+
+            return UploadedBy.builder()
+                    .userId(user.getUserId())
+                    .nickname(user.getNickname())
+                    .profileImage(user.getProfileImage())
+                    .build();
+        }
     }
 
     public static String resolvePhotoUrl(Memory memory) {
