@@ -1,12 +1,15 @@
 package com.hear2.couple.controller;
 
 import com.hear2.couple.dto.CoupleConnectRequest;
+import com.hear2.couple.dto.CoupleNicknameRequest;
+import com.hear2.couple.dto.CoupleNicknamesResponse;
 import com.hear2.couple.dto.CoupleStatusResponse;
 import com.hear2.couple.service.CoupleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,6 +38,19 @@ public class CoupleController {
     @GetMapping("/status")
     public CoupleStatusResponse status(Authentication authentication) {
         return coupleService.getStatus(currentUserId(authentication));
+    }
+
+    @GetMapping("/nicknames")
+    public CoupleNicknamesResponse getNicknames(Authentication authentication) {
+        return coupleService.getNicknames(currentUserId(authentication));
+    }
+
+    @PatchMapping("/nicknames")
+    public CoupleNicknamesResponse updateNickname(
+            Authentication authentication,
+            @Valid @RequestBody CoupleNicknameRequest request
+    ) {
+        return coupleService.updateNickname(currentUserId(authentication), request);
     }
 
     private Long currentUserId(Authentication authentication) {
