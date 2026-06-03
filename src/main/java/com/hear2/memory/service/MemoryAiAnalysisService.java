@@ -55,7 +55,24 @@ public class MemoryAiAnalysisService {
     }
 
     public MemoryAiAnalysisResult analyze(MemoryPhotoFile photo, MemoryCreateRequest request) {
+        return analyzeImageData(
+                photo,
+                request == null ? null : request.getMemo(),
+                request == null ? null : request.getLocationName(),
+                request == null ? null : request.getTakenAt()
+        );
+    }
+
+    public MemoryAiAnalysisResult analyzeImageData(
+            MemoryPhotoFile photo,
+            String memo,
+            String locationName,
+            LocalDateTime takenAt
+    ) {
         if (!StringUtils.hasText(apiKey)) {
+            return MemoryAiAnalysisResult.pending();
+        }
+        if (photo == null || photo.content() == null || photo.content().length == 0) {
             return MemoryAiAnalysisResult.pending();
         }
 
@@ -66,9 +83,9 @@ public class MemoryAiAnalysisService {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(buildRequestBody(
                             toDataUrl(photo),
-                            request == null ? null : request.getMemo(),
-                            request == null ? null : request.getLocationName(),
-                            request == null ? null : request.getTakenAt()
+                            memo,
+                            locationName,
+                            takenAt
                     ))
                     .retrieve()
                     .body(Map.class);
@@ -76,7 +93,14 @@ public class MemoryAiAnalysisService {
             List<MemoryAiTagCandidate> tags = parseTags(extractOutputText(response));
             return MemoryAiAnalysisResult.completed(tags);
         } catch (IOException | RuntimeException e) {
-            log.warn("Memory AI analysis failed: {}", e.getMessage());
+            log.warn(
+                    "Memory AI analysis failed for image data. fileName={}, contentType={}, size={}, errorType={}, message={}",
+                    photo.originalFileName(),
+                    photo.contentType(),
+                    photo.size(),
+                    e.getClass().getSimpleName(),
+                    e.getMessage()
+            );
             return MemoryAiAnalysisResult.failed();
         }
     }
@@ -106,7 +130,12 @@ public class MemoryAiAnalysisService {
             List<MemoryAiTagCandidate> tags = parseTags(extractOutputText(response));
             return MemoryAiAnalysisResult.completed(tags);
         } catch (IOException | RuntimeException e) {
-            log.warn("Memory AI analysis failed: {}", e.getMessage());
+            log.warn(
+                    "Memory AI analysis failed for image URL. imageUrlPresent={}, errorType={}, message={}",
+                    StringUtils.hasText(imageUrl),
+                    e.getClass().getSimpleName(),
+                    e.getMessage()
+            );
             return MemoryAiAnalysisResult.failed();
         }
     }
@@ -156,9 +185,13 @@ public class MemoryAiAnalysisService {
 
     private String toDataUrl(MemoryPhotoFile photo) {
         return "data:"
-                + photo.contentType()
+                + resolveContentType(photo.contentType())
                 + ";base64,"
                 + Base64.getEncoder().encodeToString(photo.content());
+    }
+
+    private String resolveContentType(String contentType) {
+        return StringUtils.hasText(contentType) ? contentType.trim() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
     }
 
     private String extractOutputText(Map<?, ?> response) {
