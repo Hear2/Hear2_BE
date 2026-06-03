@@ -81,6 +81,8 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .nickname(request.getNickname())
+                .birthday(request.getBirthday())
+                .gender(request.getGender())
                 .profileImage(request.getProfileImage())
                 .provider(request.getProvider())
                 .build();
