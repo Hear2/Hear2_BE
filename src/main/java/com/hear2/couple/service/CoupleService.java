@@ -1,18 +1,23 @@
 package com.hear2.couple.service;
 
 import com.hear2.couple.dto.CoupleConnectRequest;
+import com.hear2.couple.dto.CoupleNicknameRequest;
+import com.hear2.couple.dto.CoupleNicknamesResponse;
 import com.hear2.couple.dto.CoupleStatusResponse;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleCode;
 import com.hear2.couple.entity.CoupleMember;
+import com.hear2.couple.entity.CoupleNickname;
 import com.hear2.couple.repository.CoupleCodeRepository;
 import com.hear2.couple.repository.CoupleMemberRepository;
+import com.hear2.couple.repository.CoupleNicknameRepository;
 import com.hear2.couple.repository.CoupleRepository;
 import com.hear2.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
@@ -32,6 +37,7 @@ public class CoupleService {
     private final CoupleRepository coupleRepository;
     private final CoupleCodeRepository coupleCodeRepository;
     private final CoupleMemberRepository coupleMemberRepository;
+    private final CoupleNicknameRepository coupleNicknameRepository;
     private final UserRepository userRepository;
 
     @Transactional
@@ -107,10 +113,53 @@ public class CoupleService {
                         .orElseGet(CoupleStatusResponse::disconnected));
     }
 
+    @Transactional(readOnly = true)
+    public CoupleNicknamesResponse getNicknames(Long userId) {
+        validateUser(userId);
+        CoupleMember member = findCoupleMember(userId);
+
+        return CoupleNicknamesResponse.from(
+                coupleNicknameRepository.findByCoupleIdOrderByGiverUserIdAsc(member.getCoupleId())
+        );
+    }
+
+    @Transactional
+    public CoupleNicknamesResponse updateNickname(Long userId, CoupleNicknameRequest request) {
+        validateUser(userId);
+        CoupleMember member = findCoupleMember(userId);
+        String nickname = normalizeNickname(request.getNickname());
+
+        CoupleNickname coupleNickname = coupleNicknameRepository
+                .findByCoupleIdAndGiverUserId(member.getCoupleId(), userId)
+                .orElseGet(() -> CoupleNickname.builder()
+                        .coupleId(member.getCoupleId())
+                        .giverUserId(userId)
+                        .build());
+        coupleNickname.updateNickname(nickname);
+        coupleNicknameRepository.save(coupleNickname);
+
+        return CoupleNicknamesResponse.from(
+                coupleNicknameRepository.findByCoupleIdOrderByGiverUserIdAsc(member.getCoupleId())
+        );
+    }
+
     private void validateUser(Long userId) {
         if (!userRepository.existsById(userId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found");
         }
+    }
+
+    private CoupleMember findCoupleMember(Long userId) {
+        return coupleMemberRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple connection not found"));
+    }
+
+    private String normalizeNickname(String nickname) {
+        String normalized = nickname == null ? null : nickname.trim();
+        if (!StringUtils.hasText(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "nickname is required");
+        }
+        return normalized;
     }
 
     private String generateUniqueCode() {
