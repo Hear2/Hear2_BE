@@ -86,11 +86,19 @@ public class User {
         this.providerId = providerId;
     }
 
-    public void updateProfile(String nickname, LocalDate birthday, String gender, String intro, String phone) {
+    public void updateProfile(
+            String nickname,
+            LocalDate birthday,
+            String gender,
+            String intro,
+            String phone,
+            String profileImage
+    ) {
         this.nickname = nickname;
         this.birthday = birthday;
         this.gender = gender;
         this.intro = intro;
         this.phone = phone;
+        this.profileImage = profileImage;
     }
 }

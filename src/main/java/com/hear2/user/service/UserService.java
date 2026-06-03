@@ -2,6 +2,7 @@ package com.hear2.user.service;
 
 import com.hear2.auth.dto.MeResponse;
 import com.hear2.couple.repository.CoupleMemberRepository;
+import com.hear2.memory.service.MemoryPhotoStorageService;
 import com.hear2.user.dto.UserProfileUpdateRequest;
 import com.hear2.user.entity.User;
 import com.hear2.user.repository.UserRepository;
@@ -18,6 +19,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final CoupleMemberRepository coupleMemberRepository;
+    private final MemoryPhotoStorageService memoryPhotoStorageService;
 
     @Transactional
     public MeResponse updateMe(Long userId, UserProfileUpdateRequest request) {
@@ -30,13 +32,16 @@ public class UserService {
                 safeRequest.hasBirthday() ? safeRequest.getBirthday() : user.getBirthday(),
                 safeRequest.hasGender() ? normalizeNullable(safeRequest.getGender()) : user.getGender(),
                 safeRequest.hasIntro() ? normalizeNullable(safeRequest.getIntro()) : user.getIntro(),
-                safeRequest.hasPhone() ? normalizeNullable(safeRequest.getPhone()) : user.getPhone()
+                safeRequest.hasPhone() ? normalizeNullable(safeRequest.getPhone()) : user.getPhone(),
+                safeRequest.hasProfileImage()
+                        ? normalizeProfileImage(safeRequest.getProfileImage(), user.getProfileImage())
+                        : user.getProfileImage()
         );
 
         Long coupleId = coupleMemberRepository.findByUserId(userId)
                 .map(coupleMember -> coupleMember.getCoupleId())
                 .orElse(null);
-        return MeResponse.from(user, coupleId);
+        return MeResponse.from(user, coupleId, memoryPhotoStorageService::createReadUrl);
     }
 
     private String normalizeNickname(String nickname) {
@@ -52,5 +57,12 @@ public class UserService {
             return null;
         }
         return value.trim();
+    }
+
+    private String normalizeProfileImage(String profileImage, String currentProfileImage) {
+        if (profileImage == null) {
+            return currentProfileImage;
+        }
+        return normalizeNullable(profileImage);
     }
 }

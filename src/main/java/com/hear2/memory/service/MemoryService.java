@@ -699,7 +699,7 @@ public class MemoryService {
         }
 
         return userRepository.findById(uploaderId)
-                .map(MemoryResponse.UploadedBy::from)
+                .map(user -> MemoryResponse.UploadedBy.from(user, memoryPhotoStorageService::createReadUrl))
                 .orElse(null);
     }
 
