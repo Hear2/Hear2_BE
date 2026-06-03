@@ -1,5 +1,6 @@
 package com.hear2.auth.oauth;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -9,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 
+@Slf4j
 @Service
 public class GoogleOAuthTokenInfoClient implements GoogleOAuthClient {
 
@@ -35,7 +37,10 @@ public class GoogleOAuthTokenInfoClient implements GoogleOAuthClient {
             throw invalidGoogleIdToken();
         }
 
-        if (!clientId.equals(asString(response.get("aud")))) {
+        String audience = asString(response.get("aud"));
+        log.debug("Google tokeninfo audience checked. aud={}, configuredClientId={}", audience, clientId);
+
+        if (!clientId.equals(audience)) {
             throw invalidGoogleIdToken();
         }
 
