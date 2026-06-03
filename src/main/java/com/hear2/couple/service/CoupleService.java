@@ -14,6 +14,7 @@ import com.hear2.couple.repository.CoupleCodeRepository;
 import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.couple.repository.CoupleNicknameRepository;
 import com.hear2.couple.repository.CoupleRepository;
+import com.hear2.memory.service.MemoryPhotoStorageService;
 import com.hear2.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -43,6 +44,7 @@ public class CoupleService {
     private final CoupleMemberRepository coupleMemberRepository;
     private final CoupleNicknameRepository coupleNicknameRepository;
     private final UserRepository userRepository;
+    private final MemoryPhotoStorageService memoryPhotoStorageService;
 
     @Transactional
     public CoupleStatusResponse createCode(Long userId) {
@@ -183,7 +185,7 @@ public class CoupleService {
     private CouplePartnerResponse findPartner(Long coupleId, Long userId) {
         return coupleMemberRepository.findFirstByCoupleIdAndUserIdNot(coupleId, userId)
                 .flatMap(coupleMember -> userRepository.findById(coupleMember.getUserId()))
-                .map(CouplePartnerResponse::from)
+                .map(user -> CouplePartnerResponse.from(user, memoryPhotoStorageService::createReadUrl))
                 .orElse(null);
     }
 

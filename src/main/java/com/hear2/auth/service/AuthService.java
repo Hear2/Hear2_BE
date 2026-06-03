@@ -30,6 +30,7 @@ import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.global.mail.EmailSendException;
 import com.hear2.global.mail.EmailService;
 import com.hear2.global.security.JwtProvider;
+import com.hear2.memory.service.MemoryPhotoStorageService;
 import com.hear2.user.entity.User;
 import com.hear2.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -67,6 +68,7 @@ public class AuthService {
     private final ApplicationEventPublisher eventPublisher;
     private final GoogleOAuthClient googleOAuthClient;
     private final KakaoOAuthClient kakaoOAuthClient;
+    private final MemoryPhotoStorageService memoryPhotoStorageService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -150,7 +152,7 @@ public class AuthService {
                 .map(coupleMember -> coupleMember.getCoupleId())
                 .orElse(null);
 
-        return MeResponse.from(user, coupleId);
+        return MeResponse.from(user, coupleId, memoryPhotoStorageService::createReadUrl);
     }
 
     @Transactional

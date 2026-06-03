@@ -34,6 +34,9 @@ public class UserProfileUpdateRequest {
     @Schema(description = "전화번호", example = "010-1234-5678")
     private String phone;
 
+    @Schema(description = "Profile image object key from presigned upload", example = "media/profile/1/20260604/9d2c.jpg")
+    private String profileImage;
+
     @JsonProperty("nickname")
     public void setNickname(String nickname) {
         presentFields.add("nickname");
@@ -64,6 +67,12 @@ public class UserProfileUpdateRequest {
         this.phone = phone;
     }
 
+    @JsonProperty("profileImage")
+    public void setProfileImage(String profileImage) {
+        presentFields.add("profileImage");
+        this.profileImage = profileImage;
+    }
+
     public boolean hasNickname() {
         return presentFields.contains("nickname");
     }
@@ -82,5 +91,9 @@ public class UserProfileUpdateRequest {
 
     public boolean hasPhone() {
         return presentFields.contains("phone");
+    }
+
+    public boolean hasProfileImage() {
+        return presentFields.contains("profileImage");
     }
 }

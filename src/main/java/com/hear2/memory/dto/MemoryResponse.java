@@ -146,6 +146,10 @@ public class MemoryResponse {
         private String profileImage;
 
         public static UploadedBy from(User user) {
+            return from(user, null);
+        }
+
+        public static UploadedBy from(User user, Function<String, String> profileImageResolver) {
             if (user == null) {
                 return null;
             }
@@ -153,8 +157,15 @@ public class MemoryResponse {
             return UploadedBy.builder()
                     .userId(user.getUserId())
                     .nickname(user.getNickname())
-                    .profileImage(user.getProfileImage())
+                    .profileImage(resolveProfileImage(user.getProfileImage(), profileImageResolver))
                     .build();
+        }
+
+        private static String resolveProfileImage(String profileImage, Function<String, String> profileImageResolver) {
+            if (profileImageResolver == null) {
+                return profileImage;
+            }
+            return profileImageResolver.apply(profileImage);
         }
     }
 
