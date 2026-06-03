@@ -20,6 +20,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -162,6 +163,31 @@ class CoupleControllerTest {
                 .andExpect(jsonPath("$.coupleId").doesNotExist())
                 .andExpect(jsonPath("$.coupleCode").value(code))
                 .andExpect(jsonPath("$.memberCount").value(0));
+    }
+
+    @Test
+    void updateStartDateStoresCoupleStartDate() throws Exception {
+        String userBCode = createCode(userB);
+        connect(userA, userBCode);
+
+        mockMvc.perform(patch("/api/v1/couples/start-date")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(userA.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "startDate": "2024-12-20"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connected").value(true))
+                .andExpect(jsonPath("$.startDate").value("2024-12-20"))
+                .andExpect(jsonPath("$.memberCount").value(2));
+
+        Long coupleId = coupleMemberRepository.findByUserId(userA.getUserId()).orElseThrow().getCoupleId();
+        assertThat(coupleRepository.findById(coupleId))
+                .get()
+                .extracting(couple -> couple.getStartDate())
+                .isEqualTo(java.time.LocalDate.of(2024, 12, 20));
     }
 
     private String createCode(User user) throws Exception {

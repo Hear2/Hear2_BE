@@ -42,4 +42,8 @@ public class Couple {
     void onCreate() {
         this.createdAt = LocalDateTime.now();
     }
+
+    public void updateStartDate(LocalDate startDate) {
+        this.startDate = startDate;
+    }
 }

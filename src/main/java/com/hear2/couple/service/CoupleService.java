@@ -3,6 +3,7 @@ package com.hear2.couple.service;
 import com.hear2.couple.dto.CoupleConnectRequest;
 import com.hear2.couple.dto.CoupleNicknameRequest;
 import com.hear2.couple.dto.CoupleNicknamesResponse;
+import com.hear2.couple.dto.CoupleStartDateRequest;
 import com.hear2.couple.dto.CoupleStatusResponse;
 import com.hear2.couple.entity.Couple;
 import com.hear2.couple.entity.CoupleCode;
@@ -21,6 +22,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Locale;
 
 @Service
@@ -111,6 +114,24 @@ public class CoupleService {
                 .orElseGet(() -> coupleCodeRepository.findTopByIssuerUserIdAndUsedAtIsNullOrderByCreatedAtDesc(userId)
                         .map(coupleCode -> CoupleStatusResponse.pending(coupleCode.getCode()))
                         .orElseGet(CoupleStatusResponse::disconnected));
+    }
+
+    @Transactional
+    public CoupleStatusResponse updateStartDate(Long userId, CoupleStartDateRequest request) {
+        validateUser(userId);
+        if (request == null || request.getStartDate() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate is required");
+        }
+        if (request.getStartDate().isAfter(LocalDate.now(ZoneOffset.UTC))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be in the future");
+        }
+
+        CoupleMember member = findCoupleMember(userId);
+        Couple couple = coupleRepository.findById(member.getCoupleId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple not found"));
+        couple.updateStartDate(request.getStartDate());
+        long memberCount = coupleMemberRepository.countByCoupleId(couple.getCoupleId());
+        return CoupleStatusResponse.from(couple, memberCount);
     }
 
     @Transactional(readOnly = true)
