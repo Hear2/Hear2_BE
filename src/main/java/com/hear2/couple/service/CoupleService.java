@@ -3,6 +3,7 @@ package com.hear2.couple.service;
 import com.hear2.couple.dto.CoupleConnectRequest;
 import com.hear2.couple.dto.CoupleNicknameRequest;
 import com.hear2.couple.dto.CoupleNicknamesResponse;
+import com.hear2.couple.dto.CouplePartnerResponse;
 import com.hear2.couple.dto.CoupleStartDateRequest;
 import com.hear2.couple.dto.CoupleStatusResponse;
 import com.hear2.couple.entity.Couple;
@@ -97,7 +98,7 @@ public class CoupleService {
         markActiveCodesUsed(coupleCode.getIssuerUserId(), couple.getCoupleId());
         markActiveCodesUsed(userId, couple.getCoupleId());
 
-        return CoupleStatusResponse.from(couple, 2);
+        return buildStatusResponse(couple, userId);
     }
 
     @Transactional(readOnly = true)
@@ -108,8 +109,7 @@ public class CoupleService {
                 .map(coupleMember -> {
                     Couple couple = coupleRepository.findById(coupleMember.getCoupleId())
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple not found"));
-                    long memberCount = coupleMemberRepository.countByCoupleId(couple.getCoupleId());
-                    return CoupleStatusResponse.from(couple, memberCount);
+                    return buildStatusResponse(couple, userId);
                 })
                 .orElseGet(() -> coupleCodeRepository.findTopByIssuerUserIdAndUsedAtIsNullOrderByCreatedAtDesc(userId)
                         .map(coupleCode -> CoupleStatusResponse.pending(coupleCode.getCode()))
@@ -130,8 +130,7 @@ public class CoupleService {
         Couple couple = coupleRepository.findById(member.getCoupleId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple not found"));
         couple.updateStartDate(request.getStartDate());
-        long memberCount = coupleMemberRepository.countByCoupleId(couple.getCoupleId());
-        return CoupleStatusResponse.from(couple, memberCount);
+        return buildStatusResponse(couple, userId);
     }
 
     @Transactional(readOnly = true)
@@ -173,6 +172,19 @@ public class CoupleService {
     private CoupleMember findCoupleMember(Long userId) {
         return coupleMemberRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "couple connection not found"));
+    }
+
+    private CoupleStatusResponse buildStatusResponse(Couple couple, Long userId) {
+        long memberCount = coupleMemberRepository.countByCoupleId(couple.getCoupleId());
+        CouplePartnerResponse partner = memberCount >= 2 ? findPartner(couple.getCoupleId(), userId) : null;
+        return CoupleStatusResponse.from(couple, memberCount, partner);
+    }
+
+    private CouplePartnerResponse findPartner(Long coupleId, Long userId) {
+        return coupleMemberRepository.findFirstByCoupleIdAndUserIdNot(coupleId, userId)
+                .flatMap(coupleMember -> userRepository.findById(coupleMember.getUserId()))
+                .map(CouplePartnerResponse::from)
+                .orElse(null);
     }
 
     private String normalizeNickname(String nickname) {

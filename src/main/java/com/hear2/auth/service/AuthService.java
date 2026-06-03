@@ -26,6 +26,7 @@ import com.hear2.auth.oauth.GoogleOAuthClient;
 import com.hear2.auth.oauth.GoogleOAuthUserInfo;
 import com.hear2.auth.oauth.KakaoOAuthClient;
 import com.hear2.auth.oauth.KakaoOAuthUserInfo;
+import com.hear2.couple.repository.CoupleMemberRepository;
 import com.hear2.global.mail.EmailSendException;
 import com.hear2.global.mail.EmailService;
 import com.hear2.global.security.JwtProvider;
@@ -59,6 +60,7 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
+    private final CoupleMemberRepository coupleMemberRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final EmailService emailService;
@@ -144,7 +146,11 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found"));
 
-        return MeResponse.from(user);
+        Long coupleId = coupleMemberRepository.findByUserId(userId)
+                .map(coupleMember -> coupleMember.getCoupleId())
+                .orElse(null);
+
+        return MeResponse.from(user, coupleId);
     }
 
     @Transactional
