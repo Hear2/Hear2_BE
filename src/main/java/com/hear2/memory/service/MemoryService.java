@@ -506,15 +506,19 @@ public class MemoryService {
     }
 
     private MemoryResponse toMemoryResponse(Memory memory) {
-        return MemoryResponse.from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory));
+        MemoryResponse response = MemoryResponse.from(memory, storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory));
+        response.attachUploadedBy(resolveUploadedBy(memory.getUploaderId()));
+        return response;
     }
 
     private MemoryResponse toMemoryResponse(Memory memory, List<MemoryCommentResponse> comments) {
-        return MemoryResponse.from(
+        MemoryResponse response = MemoryResponse.from(
                 memory,
                 comments,
                 storedPhotoPath -> resolvePhotoUrl(storedPhotoPath, memory)
         );
+        response.attachUploadedBy(resolveUploadedBy(memory.getUploaderId()));
+        return response;
     }
 
     private MemoryQuickResponse toQuickResponse(Memory memory) {
@@ -627,6 +631,16 @@ public class MemoryService {
                 .map(User::getNickname)
                 .filter(StringUtils::hasText)
                 .orElse("알 수 없음");
+    }
+
+    private MemoryResponse.UploadedBy resolveUploadedBy(Long uploaderId) {
+        if (uploaderId == null) {
+            return null;
+        }
+
+        return userRepository.findById(uploaderId)
+                .map(MemoryResponse.UploadedBy::from)
+                .orElse(null);
     }
 
     private LocalDate resolveMemoryDate(LocalDateTime takenAt) {
