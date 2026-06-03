@@ -87,25 +87,10 @@ public class MemoryAiAnalysisWorker {
             String locationName,
             java.time.LocalDateTime takenAt
     ) {
-        String imageUrl = memoryPhotoStorageService.createReadUrl(photo.getStoredPhotoPath());
-        if (!StringUtils.hasText(imageUrl)) {
-            log.warn(
-                    "Memory AI analysis pending because image URL could not be resolved. memoryId={}, coupleId={}, photoId={}, objectKey={}",
-                    memory.getId(),
-                    memory.getCoupleId(),
-                    photo.getId(),
-                    photo.getStoredPhotoPath()
-            );
-            return MemoryAiAnalysisResult.pending();
-        }
-
         try {
-            MemoryAiAnalysisResult result = memoryAiAnalysisService.analyzeImageUrl(
-                    imageUrl,
-                    memory.getMemo(),
-                    locationName,
-                    takenAt
-            );
+            MemoryAiAnalysisResult result = isExternalReference(photo.getStoredPhotoPath())
+                    ? analyzeExternalPhotoUrl(memory, photo, locationName, takenAt)
+                    : analyzeStoredPhotoBytes(memory, photo, locationName, takenAt);
             log.info(
                     "Memory photo AI analysis result. memoryId={}, coupleId={}, photoId={}, objectKey={}, status={}, tagCount={}",
                     memory.getId(),
@@ -129,6 +114,68 @@ public class MemoryAiAnalysisWorker {
             );
             return MemoryAiAnalysisResult.failed();
         }
+    }
+
+    private MemoryAiAnalysisResult analyzeStoredPhotoBytes(
+            Memory memory,
+            MemoryPhoto photo,
+            String locationName,
+            java.time.LocalDateTime takenAt
+    ) {
+        MemoryPhotoContent content = memoryPhotoStorageService.load(photo.getStoredPhotoPath(), photo.getPhotoContentType());
+        MemoryPhotoFile photoFile = new MemoryPhotoFile(
+                content.content(),
+                resolveOriginalFileName(photo),
+                resolveContentType(content, photo)
+        );
+
+        log.info(
+                "Memory photo AI analysis will use backend-loaded image bytes. memoryId={}, coupleId={}, photoId={}, objectKey={}, contentType={}, size={}",
+                memory.getId(),
+                memory.getCoupleId(),
+                photo.getId(),
+                photo.getStoredPhotoPath(),
+                photoFile.contentType(),
+                photoFile.size()
+        );
+        return memoryAiAnalysisService.analyzeImageData(
+                photoFile,
+                memory.getMemo(),
+                locationName,
+                takenAt
+        );
+    }
+
+    private MemoryAiAnalysisResult analyzeExternalPhotoUrl(
+            Memory memory,
+            MemoryPhoto photo,
+            String locationName,
+            java.time.LocalDateTime takenAt
+    ) {
+        String imageUrl = memoryPhotoStorageService.createReadUrl(photo.getStoredPhotoPath());
+        if (!StringUtils.hasText(imageUrl)) {
+            log.warn(
+                    "Memory AI analysis pending because external image URL could not be resolved. memoryId={}, coupleId={}, photoId={}, objectKey={}",
+                    memory.getId(),
+                    memory.getCoupleId(),
+                    photo.getId(),
+                    photo.getStoredPhotoPath()
+            );
+            return MemoryAiAnalysisResult.pending();
+        }
+
+        log.info(
+                "Memory photo AI analysis will use external image URL fallback. memoryId={}, coupleId={}, photoId={}",
+                memory.getId(),
+                memory.getCoupleId(),
+                photo.getId()
+        );
+        return memoryAiAnalysisService.analyzeImageUrl(
+                imageUrl,
+                memory.getMemo(),
+                locationName,
+                takenAt
+        );
     }
 
     private void applyPhotoAiAnalysis(MemoryPhoto photo, MemoryAiAnalysisResult analysisResult) {
@@ -177,5 +224,28 @@ public class MemoryAiAnalysisWorker {
             return "FAILED";
         }
         return "PENDING";
+    }
+
+    private boolean isExternalReference(String storedPhotoPath) {
+        return StringUtils.hasText(storedPhotoPath)
+                && (storedPhotoPath.startsWith("http://")
+                || storedPhotoPath.startsWith("https://")
+                || storedPhotoPath.startsWith("s3://"));
+    }
+
+    private String resolveOriginalFileName(MemoryPhoto photo) {
+        return StringUtils.hasText(photo.getOriginalFileName())
+                ? photo.getOriginalFileName()
+                : "memory-photo-" + photo.getId();
+    }
+
+    private String resolveContentType(MemoryPhotoContent content, MemoryPhoto photo) {
+        if (content != null && StringUtils.hasText(content.contentType())) {
+            return content.contentType();
+        }
+        if (photo != null && StringUtils.hasText(photo.getPhotoContentType())) {
+            return photo.getPhotoContentType();
+        }
+        return "application/octet-stream";
     }
 }
