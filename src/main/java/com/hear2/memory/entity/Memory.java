@@ -2,6 +2,7 @@ package com.hear2.memory.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -9,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@DynamicUpdate
 @Table(indexes = {
         @Index(name = "idx_memory_couple_date", columnList = "coupleId, memoryDate"),
         @Index(name = "idx_memory_couple_created", columnList = "coupleId, createdAt")
