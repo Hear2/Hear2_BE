@@ -1,5 +1,7 @@
 package com.hear2.calendar.service;
 
+import com.hear2.anniversary.dto.AnniversaryResponse;
+import com.hear2.anniversary.service.AnniversaryService;
 import com.hear2.calendar.dto.CalendarDateDetailResponse;
 import com.hear2.calendar.dto.CalendarEventCreateRequest;
 import com.hear2.calendar.dto.CalendarEventResponse;
@@ -63,6 +65,7 @@ public class CalendarService {
     private final MemoryRepository memoryRepository;
     private final GoogleCalendarService googleCalendarService;
     private final ChatMessageRepository chatMessageRepository;
+    private final AnniversaryService anniversaryService;
 
     @Transactional
     public CalendarEventResponse createEvent(CalendarEventCreateRequest request, Long currentUserId) {
@@ -126,6 +129,10 @@ public class CalendarService {
                 monthStart,
                 monthEnd
         );
+        Map<LocalDate, List<AnniversaryResponse>> anniversariesByDate = anniversaryService
+                .getAnniversariesBetween(monthStart, monthEnd, currentUserId)
+                .stream()
+                .collect(Collectors.groupingBy(AnniversaryResponse::displayDate));
 
         List<CalendarMonthDayResponse> days = new ArrayList<>();
         for (int day = 1; day <= yearMonth.lengthOfMonth(); day++) {
@@ -134,6 +141,7 @@ public class CalendarService {
                     .date(date)
                     .events(eventsByDate.getOrDefault(date, List.of()))
                     .memoryMarker(CalendarMemoryMarkerResponse.from(memoriesByDate.get(date)))
+                    .anniversaries(anniversariesByDate.getOrDefault(date, List.of()))
                     .build());
         }
 
@@ -168,11 +176,17 @@ public class CalendarService {
                 .stream()
                 .map(MemoryResponse::from)
                 .toList();
+        List<AnniversaryResponse> anniversaries = anniversaryService.getAnniversariesBetween(
+                date,
+                date,
+                currentUserId
+        );
 
         return CalendarDateDetailResponse.builder()
                 .date(date)
                 .events(events)
                 .memories(memories)
+                .anniversaries(anniversaries)
                 .build();
     }
 

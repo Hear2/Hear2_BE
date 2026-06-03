@@ -4,6 +4,11 @@ import com.hear2.calendar.entity.CalendarEvent;
 import com.hear2.calendar.entity.CalendarEventVisibility;
 import com.hear2.calendar.repository.CalendarEventMemoryLinkRepository;
 import com.hear2.calendar.repository.CalendarEventRepository;
+import com.hear2.anniversary.entity.Anniversary;
+import com.hear2.anniversary.repository.AnniversaryRepository;
+import com.hear2.anniversary.repository.HiddenAutoAnniversaryRepository;
+import com.hear2.anniversary.support.AnniversaryDdayType;
+import com.hear2.anniversary.support.AnniversaryType;
 import com.hear2.chat.entity.ChatMessage;
 import com.hear2.chat.entity.MessageType;
 import com.hear2.chat.repository.ChatMessageRepository;
@@ -28,6 +33,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
@@ -72,12 +78,20 @@ class CalendarControllerTest {
     @Autowired
     private ChatMessageRepository chatMessageRepository;
 
+    @Autowired
+    private AnniversaryRepository anniversaryRepository;
+
+    @Autowired
+    private HiddenAutoAnniversaryRepository hiddenAutoAnniversaryRepository;
+
     private User user;
     private User partner;
     private Couple couple;
 
     @BeforeEach
     void setUp() {
+        hiddenAutoAnniversaryRepository.deleteAll();
+        anniversaryRepository.deleteAll();
         calendarEventMemoryLinkRepository.deleteAll();
         calendarEventRepository.deleteAll();
         chatMessageRepository.deleteAll();
@@ -151,6 +165,8 @@ class CalendarControllerTest {
         saveEvent("회식", partner.getUserId(), CalendarEventVisibility.PERSONAL, 17);
         saveEvent("서울숲 데이트", user.getUserId(), CalendarEventVisibility.SHARED, 12);
         saveMemory(LocalDate.of(2026, 4, 12));
+        couple.updateStartDate(LocalDate.of(2025, 4, 12));
+        coupleRepository.save(couple);
 
         mockMvc.perform(get("/api/v1/calendar/month")
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId()))
@@ -160,6 +176,7 @@ class CalendarControllerTest {
                 .andExpect(jsonPath("$.data.days[11].date").value("2026-04-12"))
                 .andExpect(jsonPath("$.data.days[11].memoryMarker.hasMemory").value(true))
                 .andExpect(jsonPath("$.data.days[11].memoryMarker.markerIcon").value("HEART"))
+                .andExpect(jsonPath("$.data.days[11].anniversaries[*].autoKey", hasItem("YEAR_1")))
                 .andExpect(jsonPath("$.data.days[11].events[*].title", hasItem("서울숲 데이트")))
                 .andExpect(jsonPath("$.data.days[13].events[*].viewType", hasItem("OWNER")))
                 .andExpect(jsonPath("$.data.days[16].events[*].viewType", hasItem("PARTNER")));
@@ -169,6 +186,19 @@ class CalendarControllerTest {
     void dateDetailReturnsEventsAndMemories() throws Exception {
         CalendarEvent event = saveEvent("서울숲 데이트", user.getUserId(), CalendarEventVisibility.SHARED, 12);
         Memory memory = saveMemory(LocalDate.of(2026, 4, 12));
+        anniversaryRepository.save(Anniversary.builder()
+                .coupleId(couple.getCoupleId())
+                .createdBy(user.getUserId())
+                .title("예진 생일")
+                .type(AnniversaryType.BIRTHDAY)
+                .anniversaryDate(LocalDate.of(2026, 4, 12))
+                .ddayType(AnniversaryDdayType.D_MINUS)
+                .repeatYearly(true)
+                .shared(true)
+                .icon("CAKE")
+                .color("#FFB75E")
+                .notifyDays(List.of(7, 1, 0))
+                .build());
 
         mockMvc.perform(post("/api/v1/calendar/events/{eventId}/memories/{memoryId}", event.getId(), memory.getId())
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
@@ -179,7 +209,8 @@ class CalendarControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getUserId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.events[0].title").value("서울숲 데이트"))
-                .andExpect(jsonPath("$.data.memories[0].id").value(memory.getId()));
+                .andExpect(jsonPath("$.data.memories[0].id").value(memory.getId()))
+                .andExpect(jsonPath("$.data.anniversaries[*].title", hasItem("예진 생일")));
     }
 
     @Test
